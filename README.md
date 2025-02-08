@@ -1,4 +1,4 @@
-# 네이버 뉴스 분석기 (Naver News Analyzer)
+#  News Pipeine
 
 ## 프로젝트 개요
 이 프로젝트는 네이버 뉴스를 수집하고 분석하여 토픽별 감정 분석을 수행하는 시스템입니다.
@@ -11,7 +11,7 @@
 - 실시간 데이터 처리 및 시각화
 
 ## 기술 스택
-- Python 3.9+
+- Python 3.11+
 - AWS S3
 - Apache Kafka
 - Apache Airflow
@@ -67,6 +67,3 @@ cp .env.example .env
 ├── tests/              # 테스트 코드
 └── docs/              # 문서
 ```
-
-## 라이선스
-MIT License 
