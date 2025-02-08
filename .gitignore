@@ -62,3 +62,6 @@ airflow.cfg
 unittests.cfg
 logs/
 airflow-webserver.pid 
+
+test_results/
+README.md
