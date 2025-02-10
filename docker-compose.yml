@@ -16,11 +16,11 @@ services:
   zookeeper:
     image: confluentinc/cp-zookeeper:latest
     container_name: npl-zookeeper
-    ports:
-      - "2181:2181"
     environment:
       ZOOKEEPER_CLIENT_PORT: 2181
       ZOOKEEPER_TICK_TIME: 2000
+    ports:
+      - "2181:2181"
     networks:
       - npl-network
 
@@ -39,6 +39,23 @@ services:
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
       KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
       KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_NUM_PARTITIONS: 3
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
+    networks:
+      - npl-network
+
+  # Kafka UI
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: npl-kafka-ui
+    depends_on:
+      - kafka
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: npl-cluster
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
     networks:
       - npl-network
 
@@ -54,8 +71,7 @@ services:
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
       - MONGODB_URI=mongodb://mongodb:27017
-      - DATABASE_NAME=naver_news
-      - KAFKA_TOPIC_NEWS=naver-news-raw
+      - DATABASE_NAME=news_db
     networks:
       - npl-network
 
@@ -71,9 +87,7 @@ services:
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
       - MONGODB_URI=mongodb://mongodb:27017
-      - DATABASE_NAME=naver_news
-      - KAFKA_TOPIC_NEWS=naver-news-raw
-      - KAFKA_TOPIC_PROCESSED=naver-news-processed
+      - DATABASE_NAME=news_db
     networks:
       - npl-network
 
@@ -89,9 +103,7 @@ services:
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
       - MONGODB_URI=mongodb://mongodb:27017
-      - DATABASE_NAME=naver_news
-      - KAFKA_TOPIC_PROCESSED=naver-news-processed
-      - KAFKA_TOPIC_TOPICS=naver-news-topics
+      - DATABASE_NAME=news_db
     networks:
       - npl-network
 
@@ -107,9 +119,7 @@ services:
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
       - MONGODB_URI=mongodb://mongodb:27017
-      - DATABASE_NAME=naver_news
-      - KAFKA_TOPIC_TOPICS=naver-news-topics
-      - KAFKA_TOPIC_ANALYZED=naver-news-analyzed
+      - DATABASE_NAME=news_db
     networks:
       - npl-network
 
@@ -125,7 +135,7 @@ services:
       - mongodb
     environment:
       - MONGODB_URI=mongodb://mongodb:27017
-      - DATABASE_NAME=naver_news
+      - DATABASE_NAME=news_db
       - API_HOST=0.0.0.0
       - API_PORT=8000
     networks:
