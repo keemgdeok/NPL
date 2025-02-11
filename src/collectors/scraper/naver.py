@@ -22,7 +22,7 @@ class NaverScraper(BaseScraper):
             'society': '102',      # 사회
             'politics': '100',     # 정치
             'world': '104',        # 세계
-            'culture': '103'       # 생활/문화
+            'culture': '103',       # 생활/문화
         }
         self.base_url = "https://news.naver.com/section"
     
