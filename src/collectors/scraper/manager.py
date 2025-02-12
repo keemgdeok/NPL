@@ -7,6 +7,7 @@ from .base import BaseScraper
 from .hankyung import HankyungScraper
 from .mk_popular import MKPopularScraper
 from .naver import NaverScraper
+from .mk import MKScraper
 
 # 로깅 설정
 logging.basicConfig(
@@ -32,9 +33,10 @@ class ScraperManager:
             interval (int, optional): 수집 주기 (초). 기본값은 1시간.
         """
         self.scrapers: List[BaseScraper] = [
-            HankyungScraper(kafka_bootstrap_servers),
-            MKPopularScraper(kafka_bootstrap_servers),
-            NaverScraper(kafka_bootstrap_servers)
+            # HankyungScraper(kafka_bootstrap_servers),
+            # MKPopularScraper(kafka_bootstrap_servers),
+            NaverScraper(kafka_bootstrap_servers),
+            # MKScraper(kafka_bootstrap_servers)
         ]
         self.interval = interval
     

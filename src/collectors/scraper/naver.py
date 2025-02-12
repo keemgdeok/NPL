@@ -90,55 +90,87 @@ class NaverScraper(BaseScraper):
             return None
     
     async def get_category_news(self, category: str) -> List[NewsArticle]:
-        """특정 카테고리의 뉴스 목록을 수집"""
+        """특정 카테고리의 인기 뉴스 목록을 수집"""
+        news_list: List[NewsArticle] = []
+        
         try:
             async with aiohttp.ClientSession(headers=self.headers) as session:
-                # 카테고리 페이지 URL
-                url = f"{self.base_url}/{self.categories[category]}"
-                logger.info(f"수집 URL: {url}")
+                # economy 카테고리의 경우 여러 서브 카테고리 수집
+                if category == 'economy' and isinstance(self.categories[category], list):
+                    for sub_category in self.categories[category]:
+                        url = f"{self.base_url}/{sub_category}/"
+                        logger.info(f"수집 URL: {url}")
+                        
+                        async with session.get(url) as response:
+                            if response.status != 200:
+                                logger.error(f"Failed to fetch category {sub_category}")
+                                continue
+                            
+                            html = await response.text()
+                            soup = BeautifulSoup(html, 'html.parser')
+                            
+                            # 인기 뉴스 링크 추출 (상위 10개)
+                            news_links = []
+                            rank_items = soup.select('h3.news_ttl')[:10]
+                            
+                            for item in rank_items:
+                                link_elem = item.find_parent('a')
+                                if link_elem:
+                                    link = link_elem.get('href', '')
+                                    title = item.text.strip()
+                                    if link and link.startswith('http'):
+                                        news_links.append(link)
+                                        logger.info(f"발견된 링크: {title} - {link}")
+                            
+                            if news_links:
+                                # 비동기로 뉴스 내용 수집 (economy 카테고리로 통일)
+                                tasks = [
+                                    asyncio.create_task(self.get_news_content(session, link, 'economy'))
+                                    for link in news_links
+                                ]
+                                
+                                results = await asyncio.gather(*tasks)
+                                sub_news_list = [article for article in results if article is not None]
+                                news_list.extend(sub_news_list)
+                                
+                                logger.info(f"서브카테고리 {sub_category}에서 {len(sub_news_list)}개의 기사를 수집했습니다")
+                else:
+                    # 단일 카테고리 처리 (기존 코드)
+                    url = f"{self.base_url}/{self.categories[category]}/"
+                    logger.info(f"수집 URL: {url}")
+                    
+                    async with session.get(url) as response:
+                        if response.status != 200:
+                            logger.error(f"Failed to fetch category {category}")
+                            return []
+                        
+                        html = await response.text()
+                        soup = BeautifulSoup(html, 'html.parser')
+                        
+                        news_links = []
+                        rank_items = soup.select('h3.news_ttl')[:10]
+                        
+                        for item in rank_items:
+                            link_elem = item.find_parent('a')
+                            if link_elem:
+                                link = link_elem.get('href', '')
+                                title = item.text.strip()
+                                if link and link.startswith('http'):
+                                    news_links.append(link)
+                                    logger.info(f"발견된 링크: {title} - {link}")
+                        
+                        if news_links:
+                            tasks = [
+                                asyncio.create_task(self.get_news_content(session, link, category))
+                                for link in news_links
+                            ]
+                            
+                            results = await asyncio.gather(*tasks)
+                            news_list = [article for article in results if article is not None]
                 
-                async with session.get(url) as response:
-                    if response.status != 200:
-                        logger.error(f"Failed to fetch category {category}")
-                        return []
-                    
-                    html = await response.text()
-                    soup = BeautifulSoup(html, 'html.parser')
-                    
-                    # 뉴스 링크 추출
-                    news_links = []
-                    articles = soup.select('.sa_text_title')[:10]  # 상위 10개만 선택
-                    
-                    for article in articles:
-                        link = article.get('href')
-                        if link:
-                            if not link.startswith('http'):
-                                link = 'https://news.naver.com' + link
-                            news_links.append(link)
-                            logger.info(f"발견된 링크: {link}")
-                    
-                    if not news_links:
-                        logger.warning(f"카테고리 {category}에서 뉴스 링크를 찾을 수 없습니다")
-                        return []
-                    
-                    # 비동기로 뉴스 내용 수집 (세마포어로 동시 요청 제한)
-                    async def fetch_with_semaphore(url: str):
-                        async with self.semaphore:
-                            return await self.get_news_content(session, url, category)
-                    
-                    # 모든 링크를 동시에 처리
-                    tasks = [
-                        asyncio.create_task(fetch_with_semaphore(link))
-                        for link in news_links
-                    ]
-                    
-                    results = await asyncio.gather(*tasks)
-                    news_list = [article for article in results if article is not None]
-                    
-                    logger.info(f"카테고리 {category}에서 {len(news_list)}개의 기사를 수집했습니다")
-                    
-                    return news_list
-                    
+                logger.info(f"카테고리 {category}에서 총 {len(news_list)}개의 기사를 수집했습니다")
+                return news_list[:20]  # 최대 20개 기사만 반환
+                
         except Exception as e:
             logger.error(f"Error processing category {category}: {str(e)}")
             return []
