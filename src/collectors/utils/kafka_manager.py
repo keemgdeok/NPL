@@ -2,7 +2,7 @@ from typing import List, Dict
 import json
 from kafka.admin import KafkaAdminClient, NewTopic
 import logging
-from .config import NaverNewsConfig
+from .config import Config
 
 # 로깅 설정
 logging.basicConfig(
@@ -16,7 +16,7 @@ class KafkaTopicManager:
     
     def __init__(self, bootstrap_servers: str = None):
         self.admin_client = KafkaAdminClient(
-            bootstrap_servers=bootstrap_servers or NaverNewsConfig.KAFKA_BOOTSTRAP_SERVERS
+            bootstrap_servers=bootstrap_servers or Config.KAFKA_BOOTSTRAP_SERVERS
         )
         
         # 뉴스 카테고리
