@@ -22,9 +22,73 @@ class NaverScraper(BaseScraper):
             'society': '102',      # 사회
             'politics': '100',     # 정치
             'world': '104',        # 세계
-            'culture': '103',       # 생활/문화
+            'culture': '103',      # 생활/문화
         }
         self.base_url = "https://news.naver.com/section"
+    
+    def _extract_title(self, soup: BeautifulSoup) -> Optional[str]:
+        """제목 추출
+        
+        Args:
+            soup (BeautifulSoup): 파싱된 HTML
+            
+        Returns:
+            Optional[str]: 추출된 제목 또는 None
+        """
+        title_elem = soup.select_one('#title_area')
+        if not title_elem:
+            logger.warning("제목을 찾을 수 없음")
+            return None
+        return title_elem.text.strip()
+    
+    def _extract_content(self, soup: BeautifulSoup) -> Optional[str]:
+        """본문 추출
+        
+        Args:
+            soup (BeautifulSoup): 파싱된 HTML
+            
+        Returns:
+            Optional[str]: 추출된 본문 또는 None
+        """
+        content_elem = soup.select_one('#newsct_article')
+        if not content_elem:
+            logger.warning("본문을 찾을 수 없음")
+            return None
+            
+        # 불필요한 요소 제거
+        for tag in content_elem.select('script, style, iframe, .media_end_head'):
+            tag.decompose()
+        return content_elem.text.strip()
+    
+    def _extract_press(self, soup: BeautifulSoup) -> str:
+        """언론사 추출
+        
+        Args:
+            soup (BeautifulSoup): 파싱된 HTML
+            
+        Returns:
+            str: 추출된 언론사 이름
+        """
+        press_elem = soup.select_one('.media_end_head_top a img')
+        return press_elem.get('title', '네이버뉴스') if press_elem else '네이버뉴스'
+    
+    def _extract_date(self, soup: BeautifulSoup) -> datetime:
+        """발행일 추출
+        
+        Args:
+            soup (BeautifulSoup): 파싱된 HTML
+            
+        Returns:
+            datetime: 추출된 발행일시
+        """
+        try:
+            date_elem = soup.select_one('.media_end_head_info_datestamp')
+            if date_elem:
+                date_text = date_elem.get('data-date-time')
+                return datetime.strptime(date_text, '%Y-%m-%d %H:%M:%S')
+        except Exception as e:
+            logger.warning(f"발행일 파싱 실패: {str(e)}")
+        return datetime.now()
     
     async def get_news_content(self, session: aiohttp.ClientSession, url: str, category: str) -> Optional[NewsArticle]:
         """뉴스 기사의 내용을 수집"""
@@ -37,44 +101,15 @@ class NaverScraper(BaseScraper):
                 html = await response.text()
                 soup = BeautifulSoup(html, 'html.parser')
                 
-                # 제목 추출
-                title = None
-                title_elem = soup.select_one('#title_area')
-                if title_elem:
-                    title = title_elem.text.strip()
+                # 각 요소 추출
+                title = self._extract_title(soup)
+                content = self._extract_content(soup)
                 
-                if not title:
-                    logger.warning(f"제목을 찾을 수 없음: {url}")
+                if not title or not content:
                     return None
                 
-                # 본문 추출
-                content = None
-                content_elem = soup.select_one('#newsct_article')
-                if content_elem:
-                    # 불필요한 요소 제거
-                    for tag in content_elem.select('script, style, iframe, .media_end_head'):
-                        tag.decompose()
-                    content = content_elem.text.strip()
-                
-                if not content:
-                    logger.warning(f"본문을 찾을 수 없음: {url}")
-                    return None
-                
-                # 발행일 추출
-                published_at = datetime.now()  # 기본값
-                date_elem = soup.select_one('.media_end_head_info_datestamp')
-                if date_elem:
-                    try:
-                        date_text = date_elem.text.strip()
-                        published_at = datetime.strptime(date_text, '%Y.%m.%d. %H:%M')
-                    except Exception as e:
-                        logger.warning(f"발행일 파싱 실패: {str(e)}")
-                
-                # 언론사 추출
-                press = "네이버뉴스"
-                press_elem = soup.select_one('.media_end_head_top a img')
-                if press_elem:
-                    press = press_elem.get('title', '네이버뉴스')
+                press = self._extract_press(soup)
+                published_at = self._extract_date(soup)
                 
                 return NewsArticle(
                     title=title,
@@ -89,87 +124,60 @@ class NaverScraper(BaseScraper):
             logger.error(f"Error processing {url}: {str(e)}")
             return None
     
-    async def get_category_news(self, category: str) -> List[NewsArticle]:
-        """특정 카테고리의 인기 뉴스 목록을 수집"""
-        news_list: List[NewsArticle] = []
+    async def _extract_news_links(self, response: aiohttp.ClientResponse) -> List[str]:
+        """뉴스 링크 추출"""
+        html = await response.text()
+        soup = BeautifulSoup(html, 'html.parser')
+        news_links = []
         
         try:
+            # 헤드라인 뉴스 섹션에서 링크 추출
+            news_items = soup.select('.sa_text_title')
+            
+            for item in news_items[:30]:  # 최대 30개 링크 수집
+                if link := item.get('href', ''):
+                    if link.startswith('http'):
+                        news_links.append(link)
+                        if title_elem := item.select_one('strong.sa_text_strong'):
+                            logger.info(f"발견된 기사: {title_elem.text.strip()}")
+            
+            if not news_links:
+                logger.warning("뉴스 링크를 찾을 수 없음")
+                logger.debug(f"현재 HTML 구조: {soup.select('.section_article')}")
+            
+        except Exception as e:
+            logger.error(f"링크 추출 중 오류 발생: {str(e)}")
+        
+        return news_links
+    
+    async def get_category_news(self, category: str) -> List[NewsArticle]:
+        """특정 카테고리의 뉴스 목록을 수집"""
+        try:
             async with aiohttp.ClientSession(headers=self.headers) as session:
-                # economy 카테고리의 경우 여러 서브 카테고리 수집
-                if category == 'economy' and isinstance(self.categories[category], list):
-                    for sub_category in self.categories[category]:
-                        url = f"{self.base_url}/{sub_category}/"
-                        logger.info(f"수집 URL: {url}")
-                        
-                        async with session.get(url) as response:
-                            if response.status != 200:
-                                logger.error(f"Failed to fetch category {sub_category}")
-                                continue
-                            
-                            html = await response.text()
-                            soup = BeautifulSoup(html, 'html.parser')
-                            
-                            # 인기 뉴스 링크 추출 (상위 10개)
-                            news_links = []
-                            rank_items = soup.select('h3.news_ttl')[:10]
-                            
-                            for item in rank_items:
-                                link_elem = item.find_parent('a')
-                                if link_elem:
-                                    link = link_elem.get('href', '')
-                                    title = item.text.strip()
-                                    if link and link.startswith('http'):
-                                        news_links.append(link)
-                                        logger.info(f"발견된 링크: {title} - {link}")
-                            
-                            if news_links:
-                                # 비동기로 뉴스 내용 수집 (economy 카테고리로 통일)
-                                tasks = [
-                                    asyncio.create_task(self.get_news_content(session, link, 'economy'))
-                                    for link in news_links
-                                ]
-                                
-                                results = await asyncio.gather(*tasks)
-                                sub_news_list = [article for article in results if article is not None]
-                                news_list.extend(sub_news_list)
-                                
-                                logger.info(f"서브카테고리 {sub_category}에서 {len(sub_news_list)}개의 기사를 수집했습니다")
-                else:
-                    # 단일 카테고리 처리 (기존 코드)
-                    url = f"{self.base_url}/{self.categories[category]}/"
-                    logger.info(f"수집 URL: {url}")
-                    
+                url = f"{self.base_url}/{self.categories[category]}"
+                logger.info(f"수집 URL: {url}")
+                
+                async with self.semaphore:
                     async with session.get(url) as response:
                         if response.status != 200:
-                            logger.error(f"Failed to fetch category {category}")
+                            logger.error(f"Failed to fetch category {category}: {response.status}")
                             return []
                         
-                        html = await response.text()
-                        soup = BeautifulSoup(html, 'html.parser')
+                        news_links = await self._extract_news_links(response)
+                        if not news_links:
+                            return []
                         
-                        news_links = []
-                        rank_items = soup.select('h3.news_ttl')[:10]
+                        # 병렬로 뉴스 기사 수집
+                        tasks = [
+                            asyncio.create_task(self.get_news_content(session, link, category))
+                            for link in news_links
+                        ]
                         
-                        for item in rank_items:
-                            link_elem = item.find_parent('a')
-                            if link_elem:
-                                link = link_elem.get('href', '')
-                                title = item.text.strip()
-                                if link and link.startswith('http'):
-                                    news_links.append(link)
-                                    logger.info(f"발견된 링크: {title} - {link}")
+                        results = await asyncio.gather(*tasks)
+                        news_list = [article for article in results if article is not None]
                         
-                        if news_links:
-                            tasks = [
-                                asyncio.create_task(self.get_news_content(session, link, category))
-                                for link in news_links
-                            ]
-                            
-                            results = await asyncio.gather(*tasks)
-                            news_list = [article for article in results if article is not None]
-                
-                logger.info(f"카테고리 {category}에서 총 {len(news_list)}개의 기사를 수집했습니다")
-                return news_list[:20]  # 최대 20개 기사만 반환
+                        logger.info(f"카테고리 {category}에서 총 {len(news_list)}개의 기사를 수집했습니다")
+                        return news_list[:30]
                 
         except Exception as e:
             logger.error(f"Error processing category {category}: {str(e)}")
@@ -177,25 +185,17 @@ class NaverScraper(BaseScraper):
 
 async def test_scraper():
     """스크래퍼 테스트 함수"""
-    # Kafka 서버 주소 설정
-    kafka_servers = "localhost:9092"
-    
-    # 스크래퍼 인스턴스 생성
-    scraper = NaverScraper(kafka_servers)
+    scraper = NaverScraper("localhost:9092")
     
     try:
-        # 테스트할 카테고리 선택
-        test_categories = ['economy']
-        
-        for category in test_categories:
+        for category in ['politics']:  # 테스트할 카테고리
             logger.info(f"\n=== {category} 카테고리 테스트 시작 ===")
             articles = await scraper.get_category_news(category)
             
-            # 결과 출력
-            logger.info(f"\n{category} 카테고리에서 {len(articles)}개의 기사를 수집했습니다.")
             for idx, article in enumerate(articles, 1):
                 logger.info(f"\n{idx}. {article.title}")
                 logger.info(f"URL: {article.url}")
+                logger.info(f"언론사: {article.press}")
                 logger.info(f"발행일: {article.published_at}")
                 logger.info(f"본문 미리보기: {article.content[:100]}...")
             
@@ -203,9 +203,8 @@ async def test_scraper():
             
     except Exception as e:
         logger.error(f"테스트 중 오류 발생: {str(e)}")
-        
     finally:
         scraper.close()
 
 if __name__ == "__main__":
-    asyncio.run(test_scraper()) 
+    asyncio.run(test_scraper())

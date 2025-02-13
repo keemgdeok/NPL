@@ -35,8 +35,8 @@ class ScraperManager:
         self.scrapers: List[BaseScraper] = [
             # HankyungScraper(kafka_bootstrap_servers),
             # MKPopularScraper(kafka_bootstrap_servers),
-            NaverScraper(kafka_bootstrap_servers),
-            # MKScraper(kafka_bootstrap_servers)
+            # NaverScraper(kafka_bootstrap_servers),
+            MKScraper(kafka_bootstrap_servers)
         ]
         self.interval = interval
     
