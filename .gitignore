@@ -64,4 +64,6 @@ logs/
 airflow-webserver.pid 
 
 test_results/
+
+# Documentation
 README.md
