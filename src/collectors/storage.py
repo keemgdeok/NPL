@@ -1,7 +1,6 @@
 from typing import Dict, Any, List
 import json
 from datetime import datetime
-import boto3
 from kafka import KafkaConsumer
 from pymongo import MongoClient
 import logging
@@ -10,6 +9,7 @@ import asyncio
 from concurrent.futures import ThreadPoolExecutor
 import time
 from botocore.exceptions import ClientError
+import aioboto3
 
 from .utils.config import Config
 
@@ -121,22 +121,18 @@ class S3StorageManager:
         # Kafka Consumer 설정
         self.consumer = KafkaConsumer(
             bootstrap_servers=Config.KAFKA_BOOTSTRAP_SERVERS,
-            group_id='s3-storage-manager',  # 고정된 group_id 사용
+            group_id='s3-storage-manager',
             value_deserializer=lambda x: json.loads(x.decode('utf-8')),
-            auto_offset_reset='earliest',  # 가장 처음 메시지부터 처리
+            auto_offset_reset='earliest',
             enable_auto_commit=False
         )
         
-        # S3 설정
-        self.s3_client = boto3.client('s3',
-            aws_access_key_id=Config.AWS_ACCESS_KEY_ID,
-            aws_secret_access_key=Config.AWS_SECRET_ACCESS_KEY,
-            region_name=Config.AWS_REGION
-        )
+        # S3 설정 (aioboto3 세션 생성)
+        self.session = aioboto3.Session()
         self.bucket_name = Config.S3_BUCKET_NAME
         
         # S3 연결 테스트
-        self._test_s3_connection()
+        asyncio.create_task(self._test_s3_connection())
         
         # 배치 처리를 위한 버퍼
         self.batch_size = Config.STORAGE_BATCH_SIZE
@@ -150,11 +146,16 @@ class S3StorageManager:
         # raw 토픽 구독
         self._subscribe_to_raw_topics()
     
-    def _test_s3_connection(self):
+    async def _test_s3_connection(self):
         """S3 연결 테스트"""
         try:
-            self.s3_client.head_bucket(Bucket=self.bucket_name)
-            logger.info(f"S3 버킷 '{self.bucket_name}' 연결 성공")
+            async with self.session.client('s3',
+                aws_access_key_id=Config.AWS_ACCESS_KEY_ID,
+                aws_secret_access_key=Config.AWS_SECRET_ACCESS_KEY,
+                region_name=Config.AWS_REGION
+            ) as s3:
+                await s3.head_bucket(Bucket=self.bucket_name)
+                logger.info(f"S3 버킷 '{self.bucket_name}' 연결 성공")
         except ClientError as e:
             error_code = e.response['Error']['Code']
             if error_code == '404':
@@ -191,20 +192,24 @@ class S3StorageManager:
             data_size = len(json_data.encode('utf-8'))
             logger.info(f"[업로드 시작] 키: {key}, 크기: {data_size:,} bytes")
             
-            # S3 업로드
-            response = self.s3_client.put_object(
-                Bucket=self.bucket_name,
-                Key=key,
-                Body=json_data.encode('utf-8'),
-                ContentType='application/json',
-                ContentEncoding='utf-8'
-            )
-            
-            if response and response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 200:
-                logger.info(f"[업로드 완료] 키: {key}, ETag: {response.get('ETag')}")
-            
-            return response
-            
+            # S3 비동기 업로드
+            async with self.session.client('s3',
+                aws_access_key_id=Config.AWS_ACCESS_KEY_ID,
+                aws_secret_access_key=Config.AWS_SECRET_ACCESS_KEY,
+                region_name=Config.AWS_REGION
+            ) as s3:
+                response = await s3.put_object(
+                    Bucket=self.bucket_name,
+                    Key=key,
+                    Body=json_data.encode('utf-8'),
+                    ContentType='application/json',
+                    ContentEncoding='utf-8'
+                )
+                
+                if response and response.get('ResponseMetadata', {}).get('HTTPStatusCode') == 200:
+                    logger.info(f"[업로드 완료] 키: {key}, ETag: {response.get('ETag')}")
+                    return response
+                
         except Exception as e:
             logger.error(f"[업로드 실패] 키: {key}, 에러: {str(e)}")
             raise
