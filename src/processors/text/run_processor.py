@@ -1,5 +1,5 @@
 import argparse
-from processor import TextProcessor
+from .processor import TextProcessor
 
 def main():
     parser = argparse.ArgumentParser(description='네이버 뉴스 텍스트 처리기')
