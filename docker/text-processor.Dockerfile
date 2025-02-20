@@ -11,26 +11,34 @@ RUN apt-get update && \
     git \
     wget \
     automake \
+    autoconf \
+    libtool \
+    perl \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
 # mecab 설치
-RUN wget https://bitbucket.org/eunjeon/mecab-ko/downloads/mecab-0.996-ko-0.9.2.tar.gz \
-    && tar xvfz mecab-0.996-ko-0.9.2.tar.gz \
-    && cd mecab-0.996-ko-0.9.2 \
-    && ./configure \
-    && make \
-    && make check \
-    && make install \
-    && ldconfig
+RUN wget "https://bitbucket.org/eunjeon/mecab-ko/downloads/mecab-0.996-ko-0.9.2.tar.gz" && \
+    tar xvfz mecab-0.996-ko-0.9.2.tar.gz && \
+    cd mecab-0.996-ko-0.9.2 && \
+    ./configure && \
+    make && \
+    make check && \
+    make install && \
+    ldconfig && \
+    cd .. && \
+    rm -rf mecab-0.996-ko-0.9.2*
 
 # mecab-ko-dic 설치
-RUN wget https://bitbucket.org/eunjeon/mecab-ko-dic/downloads/mecab-ko-dic-2.1.1-20180720.tar.gz \
-    && tar xvfz mecab-ko-dic-2.1.1-20180720.tar.gz \
-    && cd mecab-ko-dic-2.1.1-20180720 \
-    && ./configure \
-    && make \
-    && make install
+RUN wget "https://bitbucket.org/eunjeon/mecab-ko-dic/downloads/mecab-ko-dic-2.1.1-20180720.tar.gz" && \
+    tar xvfz mecab-ko-dic-2.1.1-20180720.tar.gz && \
+    cd mecab-ko-dic-2.1.1-20180720 && \
+    ./autogen.sh && \
+    ./configure && \
+    make && \
+    make install && \
+    cd .. && \
+    rm -rf mecab-ko-dic-2.1.1-20180720*
 
 # 필요한 패키지 설치
 COPY requirements.txt .
