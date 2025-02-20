@@ -40,6 +40,13 @@ RUN wget "https://bitbucket.org/eunjeon/mecab-ko-dic/downloads/mecab-ko-dic-2.1.
     cd .. && \
     rm -rf mecab-ko-dic-2.1.1-20180720*
 
+# mecab-python 설치
+RUN pip install mecab-python3
+
+# 환경 변수 설정
+ENV MECAB_PATH=/usr/local/lib/libmecab.so
+ENV MECAB_DICDIR=/usr/local/lib/mecab/dic/mecab-ko-dic
+
 # 필요한 패키지 설치
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
