@@ -156,12 +156,18 @@ class TextProcessor:
     def _send_to_kafka(self, data: Dict[str, Any]):
         """처리된 데이터를 Kafka로 전송"""
         try:
+            # 토픽 이름 생성 (예: news.economy.processed)
+            topic = f"news.{data['category']}.processed"
+            
+            # Kafka로 전송
             self.producer.send(
-                "naver-news-processed",
+                topic,
                 value=data
             )
+            logger.info(f"Sent to Kafka: {data['title']} -> {topic}")
+            
         except Exception as e:
-            print(f"Error sending to Kafka: {str(e)}")
+            logger.error(f"Error sending to Kafka: {str(e)}")
     
     def close(self):
         """리소스 정리"""
