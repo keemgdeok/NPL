@@ -3,6 +3,7 @@ import os
 import numpy as np
 from bertopic import BERTopic
 from sklearn.feature_extraction.text import CountVectorizer, TfidfVectorizer
+from sentence_transformers import SentenceTransformer
 import logging
 from umap import UMAP
 from hdbscan import HDBSCAN
@@ -46,21 +47,80 @@ class KoreanTopicModeler:
         logger.info("새 BERTopic 모델을 초기화합니다.")
         
         # 한국어 불용어 설정
-        korean_stopwords = ['이', '그', '저', '것', '및', '등', '를', '을', '과', '는', '은', '이', '가', 
-                          '으로', '로', '에', '에서', '도', '의', '이다', '한', '하다', '합니다', '입니다',
-                          '의', '가', '이', '은', '들', '는', '좀', '잘', '걍', '과', '도', '를', '으로', 
-                          '자', '에', '와', '한', '하다', '을', '를', '에서', '의', '으로']
+        korean_stopwords = [
+            "있다", "하다", "이다", "되다", "않다", "없다", "같다", "보다", "이", "그", "저",
+            "것", "수", "등", "들", "및", "에서", "그리고", "또는", "또한", "한", "할", "수",
+            "이런", "저런", "그런", "아", "휴", "아이구", "아이쿠", "아이고", "어", "나", "우리",
+            "저희", "따라", "의해", "을", "를", "에", "의", "가", "으로", "로", "에게", "뿐이다",
+            "의거하여", "근거하여", "입각하여", "기준으로", "예하면", "예를", "들면", "들자면",
+            "저것만", "소인", "소생", "저희", "지말고", "하지마", "하지마라", "다른", "물론",
+            "또한", "그리고", "비길수", "없다", "해서는", "안된다", "뿐만", "아니라", "만이",
+            "아니다", "만은", "막론하고", "관계없이", "그치지", "않다", "그러나", "그런데",
+            "하지만", "든간에", "논하지", "않다", "따지지", "않다", "설사", "비록", "더라도",
+            "아니면", "만", "못하다", "하는", "편이", "낫다", "불문하고", "향하여", "향해서",
+            "향하다", "쪽으로", "틈타", "이용하여", "타다", "오르다", "제외하고", "이외에",
+            "이", "밖에", "하여야", "비로소", "한다면", "몰라도", "외에도", "이곳", "여기",
+            "부터", "기점으로", "따라서", "할", "생각이다", "하려고하다", "이리하여", "그리하여",
+            "그렇게", "함으로써", "하지만", "일때", "할때", "앞에서", "중에서", "보는데서",
+            "으로써", "로써", "까지", "해야한다", "일것이다", "반드시", "할줄알다", "할수있다",
+            "할수있어", "임에", "틀림없다", "한다면", "등", "등등", "제", "겨우", "단지",
+            "다만", "할뿐", "딩동", "댕그", "대해서", "대하여", "대하면", "훨씬", "얼마나",
+            "얼마만큼", "얼마큼", "남짓", "여", "얼마간", "약간", "다소", "좀", "조금",
+            "다수", "몇", "얼마", "지만", "하물며", "또한", "그러나", "그렇지만", "하지만",
+            "이외에도", "대해", "말하자면", "뿐이다", "다음에", "반대로", "반대로", "말하자면",
+            "이와", "반대로", "바꾸어서", "말하면", "바꾸어서", "한다면", "만약", "그렇지않으면",
+            "까악", "툭", "딱", "삐걱거리다", "보드득", "비걱거리다", "꽈당", "응당", "해야한다",
+            "에", "가서", "각", "각각", "여러분", "각종", "각자", "제각기", "하도록하다",
+            "그러므로", "그래서", "고로", "한", "까닭에", "하기", "때문에", "거니와", "이지만",
+            "대하여", "관하여", "관한", "과연", "실로", "아니나다를가", "생각한대로", "진짜로",
+            "한적이있다", "하곤하였다", "하", "하하", "허허", "아하", "거바", "와", "오",
+            "왜", "어째서", "무엇때문에", "어찌", "하겠는가", "무슨", "어디", "어느곳",
+            "더군다나", "하물며", "더욱이는", "어느때", "언제", "야", "이봐", "어이", "여보시오",
+            "흐흐", "흥", "휴", "헉헉", "헐떡헐떡", "영차", "여차", "어기여차", "끙끙",
+            "아야", "앗", "아야", "콸콸", "졸졸", "좍좍", "뚝뚝", "주룩주룩", "솨", "우르르",
+            "그래도", "또", "그리고", "바꾸어말하면", "바꾸어말하자면", "혹은", "혹시", "답다",
+            "및", "그에", "따르는", "때가", "되어", "즉", "지든지", "설령", "가령", "하더라도",
+            "할지라도", "일지라도", "지든지", "몇", "거의", "하마터면", "인젠", "이젠", "된바에야",
+            "된이상", "만큼", "어찌됏든", "그위에", "게다가", "점에서", "보아", "비추어", "보아",
+            "아니다", "와", "오", "왜", "어째서", "무엇때문에", "어찌", "어떻해", "어떻게",
+            
+            # 뉴스 관련 일반 용어
+            "기자", "보도", "취재", "소식", "뉴스", "기사", "헤드라인", "특종", "속보",
+            "단독", "보도에", "따르면", "인터뷰", "발표", "관계자", "공식", "비공식", "논평",
+            "해명", "입장", "반응", "경향", "신문", "방송", "매체", "언론", "팩트", "출처",
+            
+            # 시간 관련 표현
+            "어제", "오늘", "내일", "모레", "그저께", "최근", "지난", "이번", "다음", "당시",
+            "현재", "미래", "올해", "작년", "내년", "지난해", "다음해", "이달", "저번달", "다음달",
+            "이번주", "저번주", "다음주", "오전", "오후", "새벽", "저녁", "밤", "주말", "평일",
+            
+            # 자주 사용되는 부사
+            "매우", "아주", "너무", "다시", "계속", "이미", "거의", "바로", "단지", "특히",
+            "주로", "항상", "자주", "대체로", "일부", "일단", "우선", "결국", "반드시", "꼭",
+            "정말", "실제", "가장", "제일", "더욱", "대략", "약", "대체", "전혀", "결코",
+            
+            # 뉴스 인용 관련
+            "말했다", "전했다", "밝혔다", "강조했다", "설명했다", "언급했다", "주장했다", "덧붙였다",
+            "밝혀졌다", "알려졌다", "보도했다", "확인했다", "부인했다", "반박했다", "지적했다",
+            "강조한", "말한", "밝힌", "전한", "언급한", "이라며", "라고", "이라고", "하면서",
+            
+            # 뉴스에 자주 등장하는 형식적 표현
+            "관련하여", "따르면", "의하면", "결과", "관련", "가능성", "예정", "방침", "전망",
+            "계획", "상황", "사실", "내용", "이유", "의견", "필요", "대책", "예상", "분석",
+            "조사", "연구", "평가", "판단", "주장", "사례", "경우", "원인", "고려", "검토"
+            ]
         
         # 임베딩 모델 설정
         if embedding_model is None:
             logger.info("CountVectorizer를 임베딩 모델로 사용합니다.")
-            embedding_model = CountVectorizer(
-                stop_words=korean_stopwords,
-                ngram_range=(1, 2),
-                max_features=10000,
-                max_df=0.95,
-                min_df=5
-            )
+            # embedding_model = CountVectorizer(
+            #     stop_words=korean_stopwords,
+            #     ngram_range=(1, 2),
+            #     max_features=10000,
+            #     max_df=0.95,
+            #     min_df=5
+            # )
+            embedding_model = SentenceTransformer('jhgan/ko-sbert-nli')
         
         # UMAP 설정 - CPU 최적화
         umap_model = UMAP(
@@ -75,8 +135,8 @@ class KoreanTopicModeler:
         
         # HDBSCAN 설정
         hdbscan_model = HDBSCAN(
-            min_cluster_size=10,
-            min_samples=5,
+            min_cluster_size=5,
+            min_samples=2,
             metric='euclidean',
             prediction_data=True,
             core_dist_n_jobs=4  # CPU 코어 수에 맞게 조정
@@ -195,7 +255,7 @@ class KoreanTopicModeler:
             }
         
         except Exception as e:
-            logger.error(f"토픽 분석 중 오류 발생: {str(e)}")
+            # logger.error(f"토픽 분석 중 오류 발생: {str(e)}")
             return {
                 "topic_id": -1,
                 "topic_prob": 0.0,
@@ -245,7 +305,7 @@ class KoreanTopicModeler:
         except Exception as e:
             logger.warning(f"토픽 라벨 생성 실패: {str(e)}")
     
-    def save_model(self, path: str = None, serialization: str = "pickle"):
+    def save_model(self, path: str = None, serialization: str = "safetensors"):
         """모델 저장
         
         Args:
@@ -257,10 +317,10 @@ class KoreanTopicModeler:
             save_path = path or self.model_path
             
             # 경로가 존재하지 않으면 생성
-            os.makedirs(os.path.dirname(save_path), exist_ok=True)
+            # os.makedirs(os.path.dirname(save_path), exist_ok=True)
             
             # 모델 저장
-            self._model.save(save_path, serialization=serialization)
+            self._model.save(save_path, serialization='safetensors')
             logger.info(f"모델을 {save_path}에 저장했습니다.")
             return True
         except Exception as e:
@@ -277,7 +337,7 @@ class KoreanTopicModeler:
                 logger.error(f"백업 저장도 실패: {str(backup_error)}")
                 return False
     
-    def load_model(self, path: str = None, serialization: str = "pickle"):
+    def load_model(self, path: str = None):
         """저장된 모델 불러오기
         
         Args:
@@ -297,22 +357,14 @@ class KoreanTopicModeler:
                 return False
                 
             # 모델 로딩
-            self._model = BERTopic.load(load_path, serialization="pickle")
+            self._model = BERTopic.load(load_path)
             logger.info(f"모델을 {load_path}에서 불러왔습니다.")
             return True
         
         except Exception as e:
             logger.error(f"모델 로딩 실패: {str(e)}")
             
-            # 다른 직렬화 방식으로 시도
-            try:
-                alt_serialization = "pickle" if serialization == "safetensors" else "safetensors"
-                self._model = BERTopic.load(load_path, serialization=alt_serialization)
-                logger.info(f"모델을 {load_path}에서 {alt_serialization} 형식으로 불러왔습니다.")
-                return True
-            except Exception as alt_error:
-                logger.error(f"대체 로딩도 실패: {str(alt_error)}")
-                return False
+ 
     
     # 주제 요약 관련 메서드
     def summarize_topics(self, docs: List[str] = None, top_n: int = 5):

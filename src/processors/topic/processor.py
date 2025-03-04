@@ -174,7 +174,7 @@ class TopicProcessor:
         
         # 토픽 분석
         try:
-            logger.info(f"기사 토픽 분석 중: {article_data.get('title', 'Unknown Title')}")
+            # logger.info(f"기사 토픽 분석 중: {article_data.get('title', 'Unknown Title')}")
             topic_data = self.topic_modeler.transform(article_data["processed_content"])
             
             # 주제 요약 정보 추가
@@ -241,7 +241,7 @@ class TopicProcessor:
                     # Kafka로 다음 단계 전송
                     self._send_to_kafka(processed_data)
                     
-                    logger.info(f"기사 처리 완료: {article_data.get('title', 'Unknown')}")
+                    # logger.info(f"기사 처리 완료: {article_data.get('title', 'Unknown')}")
                     
                 except Exception as e:
                     logger.error(f"기사 처리 중 오류: {str(e)}")

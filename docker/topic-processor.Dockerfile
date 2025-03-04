@@ -25,7 +25,8 @@ RUN pip install --no-cache-dir \
     pymongo>=4.0.0 \
     kafka-python>=2.0.0 \
     scikit-learn>=1.0.0 \
-    joblib>=1.1.0
+    joblib>=1.1.0 \
+    sentence-transformers>=3.0.0
 
 # 소스 코드 복사
 COPY src/ src/
