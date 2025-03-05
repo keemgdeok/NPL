@@ -71,12 +71,18 @@ class MKPopularScraper(BaseScraper):
             datetime: 추출된 발행일시
         """
         try:
-            date_elem = soup.select_one('.date')
-            if date_elem:
-                date_text = date_elem.text.strip()
-                return datetime.strptime(date_text, '%Y.%m.%d %H:%M')
+            # <dl class="registration"> 안에 있는 <dd> 태그에서 날짜 추출
+            registration = soup.select_one('dl.registration')
+            if registration:
+                date_elem = registration.select_one('dd')
+                if date_elem:
+                    date_text = date_elem.text.strip()
+                    return datetime.strptime(date_text, '%Y-%m-%d %H:%M:%S')
+                
         except Exception as e:
             logger.warning(f"발행일 파싱 실패: {str(e)}")
+        
+        # 날짜를 찾지 못한 경우 현재 시간 반환
         return datetime.now()
     
     async def get_news_content(self, session: aiohttp.ClientSession, url: str, category: str) -> Optional[NewsArticle]:
