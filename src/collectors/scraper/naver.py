@@ -82,12 +82,18 @@ class NaverScraper(BaseScraper):
             datetime: 추출된 발행일시
         """
         try:
-            date_elem = soup.select_one('.media_end_head_info_datestamp')
-            if date_elem:
-                date_text = date_elem.get('data-date-time')
+            # 정확한 선택자를 사용하여 날짜 요소 찾기
+            date_elem = soup.select_one('.media_end_head_info_datestamp_time, ._ARTICLE_DATE_TIME')
+            
+            # data-date-time 속성에서 날짜 추출
+            if date_elem and date_elem.has_attr('data-date-time'):
+                date_text = date_elem['data-date-time']
                 return datetime.strptime(date_text, '%Y-%m-%d %H:%M:%S')
+                
         except Exception as e:
             logger.warning(f"발행일 파싱 실패: {str(e)}")
+            
+        # 날짜를 찾지 못한 경우 현재 시간 반환
         return datetime.now()
     
     async def get_news_content(self, session: aiohttp.ClientSession, url: str, category: str) -> Optional[NewsArticle]:

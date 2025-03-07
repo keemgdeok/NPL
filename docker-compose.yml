@@ -106,6 +106,8 @@ services:
       - DATABASE_NAME=news_db
     networks:
       - npl-network
+    volumes:
+      - ./models:/app/models
 
   # 감정 분석 처리기
   sentiment-processor:
