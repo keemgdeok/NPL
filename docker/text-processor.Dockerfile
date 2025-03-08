@@ -48,8 +48,17 @@ ENV MECAB_PATH=/usr/local/lib/libmecab.so
 ENV MECAB_DICDIR=/usr/local/lib/mecab/dic/mecab-ko-dic
 
 # 필요한 패키지 설치
-COPY requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
+# COPY requirements.txt .
+# RUN pip install --no-cache-dir -r requirements.txt
+RUN pip install --no-cache-dir \
+    kafka-python>=2.0.0 \
+    pymongo>=4.0.0 \
+    konlpy>=0.6.0 \
+    nltk>=3.6.0 \
+    scikit-learn>=1.0.0 \
+    pytest>=6.0.0 \
+    python-dotenv>=0.19.0 \
+    pytz>=2021.1
 
 # 소스 코드 복사
 COPY src/ src/
