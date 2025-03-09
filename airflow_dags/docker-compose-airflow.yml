@@ -1,8 +1,6 @@
-version: '3'
-
 x-airflow-common:
   &airflow-common
-  image: apache/airflow:2.5.1-python3.10
+  image: apache/airflow:2.10.5-python3.11
   environment:
     &airflow-common-env
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
@@ -13,20 +11,16 @@ x-airflow-common:
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
     AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
     AIRFLOW__WEBSERVER__SECRET_KEY: 'news-pipeline-key'
-    AIRFLOW__SCHEDULER__ENABLE_HEALTH_CHECK: 'true'
-    AIRFLOW__SCHEDULER__CHILD_PROCESS_LOG_DIRECTORY: '/opt/airflow/logs/scheduler'
-    AIRFLOW__WEBSERVER__EXPOSE_CONFIG: 'true'
-    AIRFLOW__PATH__DAGS: '/opt/airflow/dags'
-    AIRFLOW__PATH__LOGS: '/opt/airflow/logs'
-    AIRFLOW__PATH__PLUGINS: '/opt/airflow/plugins'
-    AIRFLOW__WEBSERVER__WEB_SERVER_PORT: '8081'
+    AIRFLOW__WEBSERVER__WEB_SERVER_PORT: '8080'
+    AIRFLOW__WEBSERVER__EXPOSE_CONFIG: 'false'
+    AIRFLOW__SCHEDULER__MIN_FILE_PROCESS_INTERVAL: '60'
   volumes:
     - ./airflow/dags:/opt/airflow/dags
     - ./airflow/logs:/opt/airflow/logs
     - ./airflow/plugins:/opt/airflow/plugins
     - ./airflow/config:/opt/airflow/config
     - ./airflow/models:/opt/airflow/dags/project/models
-    - /var/run/docker.sock:/var/run/docker.sock  # Docker 소켓 마운트
+    - /var/run/docker.sock:/var/run/docker.sock
   user: "${AIRFLOW_UID:-50000}:0"
   depends_on:
     &airflow-common-depends-on
@@ -36,32 +30,34 @@ x-airflow-common:
 services:
   postgres:
     image: postgres:13
+    container_name: npl-airflow-postgres
     environment:
       POSTGRES_USER: airflow
       POSTGRES_PASSWORD: airflow
       POSTGRES_DB: airflow
     volumes:
-      - airflow-db-volume:/var/lib/postgresql/data
-    ports:
-      - "5432:5432"
+      - postgres-db-volume:/var/lib/postgresql/data
     healthcheck:
       test: ["CMD", "pg_isready", "-U", "airflow"]
-      interval: 5s
+      interval: 10s
       retries: 5
+      start_period: 5s
     restart: always
     networks:
       - npl-network
 
   airflow-webserver:
     <<: *airflow-common
+    container_name: npl-airflow-webserver
     command: webserver
     ports:
-      - "8081:8081"
+      - 8080:8080
     healthcheck:
-      test: ["CMD", "curl", "--fail", "http://localhost:8081/health"]
-      interval: 10s
+      test: ["CMD", "curl", "--fail", "http://localhost:8080/health"]
+      interval: 30s
       timeout: 10s
       retries: 5
+      start_period: 30s
     restart: always
     networks:
       - npl-network
@@ -72,12 +68,14 @@ services:
 
   airflow-scheduler:
     <<: *airflow-common
+    container_name: npl-airflow-scheduler
     command: scheduler
     healthcheck:
       test: ["CMD-SHELL", 'airflow jobs check --job-type SchedulerJob --hostname "$${HOSTNAME}"']
-      interval: 10s
+      interval: 30s
       timeout: 10s
       retries: 5
+      start_period: 30s
     restart: always
     networks:
       - npl-network
@@ -88,75 +86,34 @@ services:
 
   airflow-init:
     <<: *airflow-common
+    container_name: npl-airflow-init
     entrypoint: /bin/bash
+    user: "50000:0"
     command:
       - -c
       - |
-        function ver() {
-          printf "%04d%04d%04d%04d" $${1//./ }
-        }
-        airflow_version=$$(gosu airflow airflow version)
-        airflow_version_comparable=$$(ver $${airflow_version})
-        min_airflow_version=2.2.0
-        min_airflow_version_comparable=$$(ver $${min_airflow_version})
-        if (( airflow_version_comparable < min_airflow_version_comparable )); then
-          echo
-          echo -e "\033[1;31mERROR!!!: Too old Airflow version $${airflow_version}!\e[0m"
-          echo "The minimum Airflow version supported: $${min_airflow_version}. Only use this or higher!"
-          echo
-          exit 1
-        fi
-        if [[ -z "${AIRFLOW_UID}" ]]; then
-          echo
-          echo -e "\033[1;33mWARNING!!!: AIRFLOW_UID not set!\e[0m"
-          echo "If you are on Linux, you SHOULD follow the instructions below to set "
-          echo "AIRFLOW_UID environment variable, otherwise files will be owned by root."
-          echo "For other operating systems you can get rid of the warning with manually created .env file:"
-          echo "    See: https://airflow.apache.org/docs/apache-airflow/stable/start/docker.html#setting-the-right-airflow-user"
-          echo
-        fi
-        one_meg=1048576
-        mem_available=$$(($$(getconf _PHYS_PAGES) * $$(getconf PAGE_SIZE) / one_meg))
-        cpus_available=$$(grep -cE 'cpu[0-9]+' /proc/stat)
-        disk_available=$$(df / | tail -1 | awk '{print $$4}')
-        disk_available=$$(($${disk_available} / one_meg))
-        if (( mem_available < 4000 )); then
-          echo
-          echo -e "\033[1;33mWARNING!!!: Not enough memory available for Docker.\e[0m"
-          echo "At least 4GB of memory required. You have $$(numfmt --to iec $$((mem_available * one_meg)))"
-          echo
-        fi
-        if (( cpus_available < 2 )); then
-          echo
-          echo -e "\033[1;33mWARNING!!!: Not enough CPUS available for Docker.\e[0m"
-          echo "At least 2 CPUs recommended. You have $${cpus_available}"
-          echo
-        fi
-        if (( disk_available < 10000 )); then
-          echo
-          echo -e "\033[1;33mWARNING!!!: Not enough Disk space available for Docker.\e[0m"
-          echo "At least 10 GBs recommended. You have $$(numfmt --to iec $$((disk_available * one_meg)))"
-          echo
-        fi
-        mkdir -p /sources/logs /sources/dags /sources/plugins /sources/config /sources/models
-        chown -R "${AIRFLOW_UID}:0" /sources/{logs,dags,plugins,config,models}
-        exec /entrypoint airflow version
+        mkdir -p /opt/airflow/dags /opt/airflow/logs /opt/airflow/plugins /opt/airflow/config
+        chmod -R g+w /opt/airflow/dags /opt/airflow/logs /opt/airflow/plugins
+        airflow db init && \
+        airflow users create \
+          --username airflow \
+          --firstname Admin \
+          --lastname User \
+          --role Admin \
+          --email keemgdeok@gmail.com \
+          --password airflow
+    networks:
+      - npl-network
     environment:
       <<: *airflow-common-env
       _AIRFLOW_DB_UPGRADE: 'true'
       _AIRFLOW_WWW_USER_CREATE: 'true'
-      _AIRFLOW_WWW_USER_USERNAME: ${_AIRFLOW_WWW_USER_USERNAME:-airflow}
-      _AIRFLOW_WWW_USER_PASSWORD: ${_AIRFLOW_WWW_USER_PASSWORD:-airflow}
-      _PIP_ADDITIONAL_REQUIREMENTS: ${_PIP_ADDITIONAL_REQUIREMENTS:-apache-airflow-providers-docker}
-    user: "0:0"
-    volumes:
-      - ./airflow:/sources
-    networks:
-      - npl-network
+      _AIRFLOW_WWW_USER_USERNAME: airflow
+      _AIRFLOW_WWW_USER_PASSWORD: airflow
 
 networks:
   npl-network:
     external: true
 
 volumes:
-  airflow-db-volume: 
+  postgres-db-volume: 

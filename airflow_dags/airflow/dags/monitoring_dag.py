@@ -13,8 +13,8 @@ import logging
 default_args = {
     'owner': 'airflow',
     'depends_on_past': False,
-    'start_date': datetime(2023, 1, 1),
-    'email': [Variable.get('EMAIL_NOTIFICATION', default='admin@example.com')],
+    'start_date': datetime(2025, 3, 1),
+    'email': [Variable.get('EMAIL_NOTIFICATION') or 'keemgdeok@gmail.com'],
     'email_on_failure': True,
     'email_on_retry': False,
     'retries': 1,

@@ -7,11 +7,16 @@ from airflow.models import Variable
 from docker.types import Mount
 
 # 기본 인자 정의
+try:
+    notification_email = Variable.get('EMAIL_NOTIFICATION')
+except KeyError:
+    notification_email = 'keemgdeok@gmail.com'
+
 default_args = {
     'owner': 'airflow',
     'depends_on_past': False,
-    'start_date': datetime(2023, 1, 1),
-    'email': ['admin@example.com'],
+    'start_date': datetime(2025, 3, 1),
+    'email': [notification_email],
     'email_on_failure': True,
     'email_on_retry': False,
     'retries': 1,
@@ -19,11 +24,19 @@ default_args = {
 }
 
 # 환경 변수 설정
-KAFKA_BOOTSTRAP_SERVERS = Variable.get('KAFKA_BOOTSTRAP_SERVERS', default='kafka:29092')
-MONGODB_URI = Variable.get('MONGODB_URI', default='mongodb://mongodb:27017')
-DATABASE_NAME = Variable.get('DATABASE_NAME', default='news_db')
-DOCKER_NETWORK = Variable.get('DOCKER_NETWORK', default='npl-network')
-PROJECT_PATH = Variable.get('PROJECT_PATH', default='/opt/airflow/dags/project')
+try:
+    KAFKA_BOOTSTRAP_SERVERS = Variable.get('KAFKA_BOOTSTRAP_SERVERS')
+except KeyError:
+    KAFKA_BOOTSTRAP_SERVERS = 'kafka:29092'
+
+try:
+    MONGODB_URI = Variable.get('MONGODB_URI')
+except KeyError:
+    MONGODB_URI = 'mongodb://mongodb:27017'
+
+DATABASE_NAME = Variable.get('DATABASE_NAME') or 'news_db'
+DOCKER_NETWORK = Variable.get('DOCKER_NETWORK') or 'npl-network'
+PROJECT_PATH = Variable.get('PROJECT_PATH') or '/opt/airflow/dags/project'
 
 # 마운트 설정
 models_mount = Mount(
@@ -61,7 +74,7 @@ collect_news = DockerOperator(
     network_mode=DOCKER_NETWORK,
     docker_url='unix://var/run/docker.sock',
     api_version='auto',
-    auto_remove=True,
+    auto_remove='success',
     dag=dag,
 )
 
@@ -78,7 +91,7 @@ process_text = DockerOperator(
     network_mode=DOCKER_NETWORK,
     docker_url='unix://var/run/docker.sock',
     api_version='auto',
-    auto_remove=True,
+    auto_remove='success',
     dag=dag,
 )
 
@@ -96,7 +109,7 @@ process_topics = DockerOperator(
     network_mode=DOCKER_NETWORK,
     docker_url='unix://var/run/docker.sock',
     api_version='auto',
-    auto_remove=True,
+    auto_remove='success',
     dag=dag,
 )
 
@@ -113,7 +126,7 @@ process_sentiment = DockerOperator(
     network_mode=DOCKER_NETWORK,
     docker_url='unix://var/run/docker.sock',
     api_version='auto',
-    auto_remove=True,
+    auto_remove='success',
     dag=dag,
 )
 
@@ -131,7 +144,7 @@ train_topic_model = DockerOperator(
     network_mode=DOCKER_NETWORK,
     docker_url='unix://var/run/docker.sock',
     api_version='auto',
-    auto_remove=True,
+    auto_remove='success',
     trigger_rule='all_success',
     dag=dag,
 )
@@ -150,7 +163,7 @@ create_summary = DockerOperator(
     network_mode=DOCKER_NETWORK,
     docker_url='unix://var/run/docker.sock',
     api_version='auto',
-    auto_remove=True,
+    auto_remove='success',
     dag=dag,
 )
 
