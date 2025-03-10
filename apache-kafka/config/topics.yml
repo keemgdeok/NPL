@@ -1,0 +1,118 @@
+topics:
+  # 원본 뉴스 데이터
+  - name: "news.economy.raw"
+    partitions: 3
+    replication_factor: 3
+    config:
+      "retention.ms": 604800000  # 7일
+      "cleanup.policy": "delete"
+      
+  - name: "news.business.raw"
+    partitions: 3
+    replication_factor: 3
+    config:
+      "retention.ms": 604800000
+      "cleanup.policy": "delete"
+      
+  - name: "news.society.raw"
+    partitions: 3
+    replication_factor: 3
+    config:
+      "retention.ms": 604800000
+      "cleanup.policy": "delete"
+      
+  - name: "news.world.raw"
+    partitions: 3
+    replication_factor: 3
+    config:
+      "retention.ms": 604800000
+      "cleanup.policy": "delete"
+      
+  - name: "news.politics.raw"
+    partitions: 3
+    replication_factor: 3
+    config:
+      "retention.ms": 604800000
+      "cleanup.policy": "delete"
+      
+  - name: "news.it.raw"
+    partitions: 3
+    replication_factor: 3
+    config:
+      "retention.ms": 604800000
+      "cleanup.policy": "delete"
+      
+  - name: "news.culture.raw"
+    partitions: 3
+    replication_factor: 3
+    config:
+      "retention.ms": 604800000
+      "cleanup.policy": "delete"
+  
+  # 전처리된 뉴스 데이터
+  - name: "news.economy.processed"
+    partitions: 3
+    replication_factor: 3
+    config:
+      "retention.ms": 1209600000  # 14일
+      "cleanup.policy": "delete"
+      
+  - name: "news.business.processed"
+    partitions: 3
+    replication_factor: 3
+    config:
+      "retention.ms": 1209600000
+      "cleanup.policy": "delete"
+      
+  - name: "news.society.processed"
+    partitions: 3
+    replication_factor: 3
+    config:
+      "retention.ms": 1209600000
+      "cleanup.policy": "delete"
+      
+  - name: "news.world.processed"
+    partitions: 3
+    replication_factor: 3
+    config:
+      "retention.ms": 1209600000
+      "cleanup.policy": "delete"
+      
+  - name: "news.politics.processed"
+    partitions: 3
+    replication_factor: 3
+    config:
+      "retention.ms": 1209600000
+      "cleanup.policy": "delete"
+      
+  - name: "news.it.processed"
+    partitions: 3
+    replication_factor: 3
+    config:
+      "retention.ms": 1209600000
+      "cleanup.policy": "delete"
+      
+  - name: "news.culture.processed"
+    partitions: 3
+    replication_factor: 3
+    config:
+      "retention.ms": 1209600000
+      "cleanup.policy": "delete"
+  
+  # 토픽 분석 결과
+  - name: "news.economy.topic"
+    partitions: 3
+    replication_factor: 3
+    config:
+      "retention.ms": 2592000000  # 30일
+      "cleanup.policy": "delete"
+      
+  # 감정 분석 결과
+  - name: "news.economy.sentiment"
+    partitions: 3
+    replication_factor: 3
+    config:
+      "retention.ms": 2592000000  # 30일
+      "cleanup.policy": "delete"
+      
+  # 기타 카테고리의 토픽 및 감정 분석 토픽은 필요에 따라 추가 
