@@ -38,8 +38,8 @@ async def async_main(args):
 def main():
     """명령행 인자를 파싱하고 비동기 메인 함수를 실행"""
     parser = argparse.ArgumentParser(description='뉴스 수집기')
-    parser.add_argument('--kafka-servers', type=str, default='localhost:29092',
-                      help='Kafka 부트스트랩 서버 주소 (기본값: localhost:29092)')
+    parser.add_argument('--kafka-servers', type=str, default='localhost:9092',
+                      help='Kafka 부트스트랩 서버 주소 (기본값: localhost:9092)')
     parser.add_argument('--interval', type=int, default=3600,
                       help='주기적 실행 시 수집 간격(초) (기본값: 3600)')
     parser.add_argument('--run-once', action='store_true',
