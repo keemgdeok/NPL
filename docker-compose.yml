@@ -17,7 +17,6 @@ services:
       dockerfile: docker/collector.Dockerfile
     container_name: npl-collector
     depends_on:
-      # - kafka
       - mongodb
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
@@ -33,7 +32,6 @@ services:
       dockerfile: docker/text-processor.Dockerfile
     container_name: npl-text-processor
     depends_on:
-      # - kafka
       - mongodb
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
@@ -49,7 +47,6 @@ services:
       dockerfile: docker/topic-processor.Dockerfile
     container_name: npl-topic-processor
     depends_on:
-      # - kafka
       - mongodb
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
@@ -67,7 +64,6 @@ services:
       dockerfile: docker/sentiment-processor.Dockerfile
     container_name: npl-sentiment-processor
     depends_on:
-      # - kafka
       - mongodb
     environment:
       - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
