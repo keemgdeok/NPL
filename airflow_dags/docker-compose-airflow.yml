@@ -14,6 +14,7 @@ x-airflow-common:
     AIRFLOW__WEBSERVER__WEB_SERVER_PORT: '8081'
     AIRFLOW__WEBSERVER__EXPOSE_CONFIG: 'false'
     AIRFLOW__SCHEDULER__MIN_FILE_PROCESS_INTERVAL: '60'
+    AIRFLOW__CORE__DEFAULT_TIMEZONE: Asia/Seoul
   volumes:
     - ./airflow/dags:/opt/airflow/dags
     - ./airflow/logs:/opt/airflow/logs
@@ -22,6 +23,8 @@ x-airflow-common:
     - ./airflow/models:/opt/airflow/dags/project/models
     - /var/run/docker.sock:/var/run/docker.sock
   user: "${AIRFLOW_UID:-50000}:0"
+  group_add:
+    - 999
   depends_on:
     &airflow-common-depends-on
     postgres:
@@ -61,6 +64,9 @@ services:
     restart: always
     networks:
       - npl-network
+    user: "${AIRFLOW_UID:-50000}:0"
+    group_add:
+    - 999
     depends_on:
       <<: *airflow-common-depends-on
       airflow-init:
@@ -79,6 +85,8 @@ services:
     restart: always
     networks:
       - npl-network
+    group_add:
+      - 999
     depends_on:
       <<: *airflow-common-depends-on
       airflow-init:

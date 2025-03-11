@@ -85,7 +85,7 @@ echo -e "${YELLOW}Airflow 서비스 시작 명령어:${NC}"
 echo "docker compose -f docker-compose-airflow.yml up -d"
 echo ""
 echo -e "${YELLOW}Airflow UI 접속 정보:${NC}"
-echo "URL: http://localhost:8080"
+echo "URL: http://localhost:8081"
 echo "Username: airflow"
 echo "Password: airflow"
 echo ""
@@ -129,7 +129,7 @@ if [[ "$answer" == "y" ]] || [[ "$answer" == "Y" ]]; then
   # 접속 확인 팁
   echo -e "\n${YELLOW}접속 확인 팁:${NC}"
   echo "웹 UI가 접속되지 않는 경우 30초~1분 정도 기다려 보세요."
-  echo "WSL을 사용 중이라면, http://localhost:8080 대신 WSL IP를 사용해 보세요:"
+  echo "WSL을 사용 중이라면, http://localhost:8081 대신 WSL IP를 사용해 보세요:"
   echo "WSL IP 확인: ip addr show eth0 | grep -oP '(?<=inet\s)\d+(\.\d+){3}'"
   
 else

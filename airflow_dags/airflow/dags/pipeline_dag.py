@@ -3,20 +3,15 @@ from airflow import DAG
 from airflow.providers.docker.operators.docker import DockerOperator
 from airflow.operators.python import PythonOperator
 from airflow.operators.dummy import DummyOperator
+from airflow.operators.bash import BashOperator
 from airflow.models import Variable
 from docker.types import Mount
-
-# 기본 인자 정의
-try:
-    notification_email = Variable.get('EMAIL_NOTIFICATION')
-except KeyError:
-    notification_email = 'keemgdeok@gmail.com'
 
 default_args = {
     'owner': 'airflow',
     'depends_on_past': False,
     'start_date': datetime(2025, 3, 1),
-    'email': [notification_email],
+    'email': [Variable.get('EMAIL_NOTIFICATION') or 'keemgdeok@gmail.com'],
     'email_on_failure': True,
     'email_on_retry': False,
     'retries': 1,
@@ -61,11 +56,17 @@ start = DummyOperator(
     dag=dag,
 )
 
+# build_collector_image = BashOperator(
+#     task_id='build_collector_image',
+#     bash_command='cd /mnt/c/Users/keemg/npl && docker build -t collector:latest -f docker/collector.Dockerfile .',
+#     dag=dag,
+# )
+
 # 뉴스 수집 작업
 collect_news = DockerOperator(
     task_id='collect_news',
-    image='news-collector:latest',
-    command='--run-once',
+    image='npl-collector:latest',
+    command='python -m src.collectors.run_collector --kafka-servers=kafka:29092 --run-once',
     environment={
         'KAFKA_BOOTSTRAP_SERVERS': KAFKA_BOOTSTRAP_SERVERS,
         'MONGODB_URI': MONGODB_URI,
@@ -75,14 +76,15 @@ collect_news = DockerOperator(
     docker_url='unix://var/run/docker.sock',
     api_version='auto',
     auto_remove='success',
+    force_pull=False,
     dag=dag,
 )
 
 # 텍스트 처리 작업
 process_text = DockerOperator(
     task_id='process_text',
-    image='text-processor:latest',
-    command='--mode batch --days 1',
+    image='npl-text-processor:latest',
+    command='python -m src.processors.text.run_processor --mode stream --run-once',
     environment={
         'KAFKA_BOOTSTRAP_SERVERS': KAFKA_BOOTSTRAP_SERVERS,
         'MONGODB_URI': MONGODB_URI,
@@ -92,80 +94,81 @@ process_text = DockerOperator(
     docker_url='unix://var/run/docker.sock',
     api_version='auto',
     auto_remove='success',
+    force_pull=False,
     dag=dag,
 )
 
 # 토픽 처리 작업
-process_topics = DockerOperator(
-    task_id='process_topics',
-    image='topic-processor:latest',
-    command='--mode batch --days 7',
-    environment={
-        'KAFKA_BOOTSTRAP_SERVERS': KAFKA_BOOTSTRAP_SERVERS,
-        'MONGODB_URI': MONGODB_URI,
-        'DATABASE_NAME': DATABASE_NAME,
-    },
-    mounts=[models_mount],
-    network_mode=DOCKER_NETWORK,
-    docker_url='unix://var/run/docker.sock',
-    api_version='auto',
-    auto_remove='success',
-    dag=dag,
-)
+# process_topics = DockerOperator(
+#     task_id='process_topics',
+#     image='topic-processor:latest',
+#     command='--mode batch --days 7',
+#     environment={
+#         'KAFKA_BOOTSTRAP_SERVERS': KAFKA_BOOTSTRAP_SERVERS,
+#         'MONGODB_URI': MONGODB_URI,
+#         'DATABASE_NAME': DATABASE_NAME,
+#     },
+#     mounts=[models_mount],
+#     network_mode=DOCKER_NETWORK,
+#     docker_url='unix://var/run/docker.sock',
+#     api_version='auto',
+#     auto_remove='success',
+#     dag=dag,
+# )
 
 # 감정 분석 작업
-process_sentiment = DockerOperator(
-    task_id='process_sentiment',
-    image='sentiment-processor:latest',
-    command='--mode batch --days 1',
-    environment={
-        'KAFKA_BOOTSTRAP_SERVERS': KAFKA_BOOTSTRAP_SERVERS,
-        'MONGODB_URI': MONGODB_URI,
-        'DATABASE_NAME': DATABASE_NAME,
-    },
-    network_mode=DOCKER_NETWORK,
-    docker_url='unix://var/run/docker.sock',
-    api_version='auto',
-    auto_remove='success',
-    dag=dag,
-)
+# process_sentiment = DockerOperator(
+#     task_id='process_sentiment',
+#     image='sentiment-processor:latest',
+#     command='--mode batch --days 1',
+#     environment={
+#         'KAFKA_BOOTSTRAP_SERVERS': KAFKA_BOOTSTRAP_SERVERS,
+#         'MONGODB_URI': MONGODB_URI,
+#         'DATABASE_NAME': DATABASE_NAME,
+#     },
+#     network_mode=DOCKER_NETWORK,
+#     docker_url='unix://var/run/docker.sock',
+#     api_version='auto',
+#     auto_remove='success',
+#     dag=dag,
+# )
 
 # 토픽 모델 학습 작업 (주 1회 실행)
-train_topic_model = DockerOperator(
-    task_id='train_topic_model',
-    image='topic-processor:latest',
-    command='--mode train --days 30',
-    environment={
-        'KAFKA_BOOTSTRAP_SERVERS': KAFKA_BOOTSTRAP_SERVERS,
-        'MONGODB_URI': MONGODB_URI,
-        'DATABASE_NAME': DATABASE_NAME,
-    },
-    mounts=[models_mount],
-    network_mode=DOCKER_NETWORK,
-    docker_url='unix://var/run/docker.sock',
-    api_version='auto',
-    auto_remove='success',
-    trigger_rule='all_success',
-    dag=dag,
-)
+# train_topic_model = DockerOperator(
+#     task_id='train_topic_model',
+#     image='topic-processor:latest',
+#     command='--mode train --days 30',
+#     environment={
+#         'KAFKA_BOOTSTRAP_SERVERS': KAFKA_BOOTSTRAP_SERVERS,
+#         'MONGODB_URI': MONGODB_URI,
+#         'DATABASE_NAME': DATABASE_NAME,
+#     },
+#     mounts=[models_mount],
+#     network_mode=DOCKER_NETWORK,
+#     docker_url='unix://var/run/docker.sock',
+#     api_version='auto',
+#     auto_remove='success',
+#     trigger_rule='all_success',
+#     dag=dag,
+# )
 
-# 요약 보고서 생성 작업
-create_summary = DockerOperator(
-    task_id='create_summary',
-    image='topic-processor:latest',
-    command='--mode summarize',
-    environment={
-        'KAFKA_BOOTSTRAP_SERVERS': KAFKA_BOOTSTRAP_SERVERS,
-        'MONGODB_URI': MONGODB_URI,
-        'DATABASE_NAME': DATABASE_NAME,
-    },
-    mounts=[models_mount],
-    network_mode=DOCKER_NETWORK,
-    docker_url='unix://var/run/docker.sock',
-    api_version='auto',
-    auto_remove='success',
-    dag=dag,
-)
+# # 요약 보고서 생성 작업
+# create_summary = DockerOperator(
+#     task_id='create_summary',
+#     image='topic-processor:latest',
+#     command='--mode summarize',
+#     environment={
+#         'KAFKA_BOOTSTRAP_SERVERS': KAFKA_BOOTSTRAP_SERVERS,
+#         'MONGODB_URI': MONGODB_URI,
+#         'DATABASE_NAME': DATABASE_NAME,
+#     },
+#     mounts=[models_mount],
+#     network_mode=DOCKER_NETWORK,
+#     docker_url='unix://var/run/docker.sock',
+#     api_version='auto',
+#     auto_remove='success',
+#     dag=dag,
+# )
 
 # 종료 연산자
 end = DummyOperator(
@@ -174,27 +177,28 @@ end = DummyOperator(
 )
 
 # 태스크 의존성 설정
-start >> collect_news >> process_text >> [process_topics, process_sentiment]
-process_topics >> create_summary
+start >> collect_news >> process_text >> end
+# [process_topics, process_sentiment]
+# process_topics >> create_summary
 
 # 매주 월요일에만 토픽 모델 재학습 실행
-from airflow.utils.trigger_rule import TriggerRule
-from airflow.operators.python import BranchPythonOperator
+# from airflow.utils.trigger_rule import TriggerRule
+# from airflow.operators.python import BranchPythonOperator
 
-def check_if_monday():
-    """현재 요일이 월요일인지 확인"""
-    if datetime.now().weekday() == 0:  # 0: 월요일
-        return 'train_topic_model'
-    else:
-        return 'end_pipeline'
+# def check_if_monday():
+#     """현재 요일이 월요일인지 확인"""
+#     if datetime.now().weekday() == 0:  # 0: 월요일
+#         return 'train_topic_model'
+#     else:
+#         return 'end_pipeline'
 
-branch_task = BranchPythonOperator(
-    task_id='check_day_of_week',
-    python_callable=check_if_monday,
-    dag=dag,
-)
+# branch_task = BranchPythonOperator(
+#     task_id='check_day_of_week',
+#     python_callable=check_if_monday,
+#     dag=dag,
+# )
 
-process_topics >> branch_task >> [train_topic_model, end]
-process_sentiment >> end
-train_topic_model >> end
-create_summary >> end 
+# process_topics >> branch_task >> [train_topic_model, end]
+# process_sentiment >> end
+# train_topic_model >> end
+# create_summary >> end 
