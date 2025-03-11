@@ -64,9 +64,8 @@ services:
     command: >
       bash -c "
         echo 'Waiting for Kafka to be available...' &&
-        cub kafka-ready -b kafka:9092 1 120 &&
+        cub kafka-ready -b kafka:29092 1 120 &&
         echo 'Creating topics...' &&
-        sleep 10 &&
         /scripts/create_topics.sh"
     networks:
       - npl-network
