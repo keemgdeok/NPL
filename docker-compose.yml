@@ -25,6 +25,24 @@ services:
     networks:
       - npl-network
 
+  # S3 저장 관리자
+  storage:
+    build:
+      context: .
+      dockerfile: docker/storage.Dockerfile
+    container_name: npl-storage
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - AWS_ACCESS_KEY_ID=${AWS_ACCESS_KEY_ID}
+      - AWS_SECRET_ACCESS_KEY=${AWS_SECRET_ACCESS_KEY}
+      - AWS_REGION=${AWS_REGION}
+      - S3_BUCKET_NAME=${S3_BUCKET_NAME}
+      - STORAGE_BATCH_SIZE=50
+      - STORAGE_FLUSH_INTERVAL=60
+      - STORAGE_MAX_WORKERS=5
+    networks:
+      - npl-network
+
   # 텍스트 처리기
   text-processor:
     build:

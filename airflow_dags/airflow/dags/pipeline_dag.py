@@ -19,19 +19,23 @@ default_args = {
 }
 
 # 환경 변수 설정
-try:
-    KAFKA_BOOTSTRAP_SERVERS = Variable.get('KAFKA_BOOTSTRAP_SERVERS')
-except KeyError:
-    KAFKA_BOOTSTRAP_SERVERS = 'kafka:29092'
-
-try:
-    MONGODB_URI = Variable.get('MONGODB_URI')
-except KeyError:
-    MONGODB_URI = 'mongodb://mongodb:27017'
-
+KAFKA_BOOTSTRAP_SERVERS = Variable.get('KAFKA_BOOTSTRAP_SERVERS') or 'kafka:29092'
+MONGODB_URI = Variable.get('MONGODB_URI') or 'mongodb://mongodb:27017'
 DATABASE_NAME = Variable.get('DATABASE_NAME') or 'news_db'
 DOCKER_NETWORK = Variable.get('DOCKER_NETWORK') or 'npl-network'
 PROJECT_PATH = Variable.get('PROJECT_PATH') or '/opt/airflow/dags/project'
+
+# S3 환경 변수
+try:
+    AWS_ACCESS_KEY_ID = Variable.get('AWS_ACCESS_KEY_ID')
+    AWS_SECRET_ACCESS_KEY = Variable.get('AWS_SECRET_ACCESS_KEY')
+    AWS_REGION = Variable.get('AWS_REGION')
+    S3_BUCKET_NAME = Variable.get('S3_BUCKET_NAME')
+except KeyError:
+    AWS_ACCESS_KEY_ID = None
+    AWS_SECRET_ACCESS_KEY = None
+    AWS_REGION = 'ap-northeast-2'
+    S3_BUCKET_NAME = 'aws-s3-keemgdeok'
 
 # 마운트 설정
 models_mount = Mount(
@@ -71,6 +75,29 @@ collect_news = DockerOperator(
         'KAFKA_BOOTSTRAP_SERVERS': KAFKA_BOOTSTRAP_SERVERS,
         'MONGODB_URI': MONGODB_URI,
         'DATABASE_NAME': DATABASE_NAME,
+    },
+    network_mode=DOCKER_NETWORK,
+    docker_url='unix://var/run/docker.sock',
+    api_version='auto',
+    auto_remove='success',
+    force_pull=False,
+    dag=dag,
+)
+
+# S3 저장 작업
+store_to_s3 = DockerOperator(
+    task_id='store_to_s3',
+    image='npl-storage:latest',
+    command='python -m src.collectors.storage --run-once --wait-empty 30',
+    environment={
+        'KAFKA_BOOTSTRAP_SERVERS': KAFKA_BOOTSTRAP_SERVERS,
+        'AWS_ACCESS_KEY_ID': AWS_ACCESS_KEY_ID,
+        'AWS_SECRET_ACCESS_KEY': AWS_SECRET_ACCESS_KEY,
+        'AWS_REGION': AWS_REGION,
+        'S3_BUCKET_NAME': S3_BUCKET_NAME,
+        'STORAGE_BATCH_SIZE': '50',
+        'STORAGE_FLUSH_INTERVAL': '60',
+        'STORAGE_MAX_WORKERS': '5',
     },
     network_mode=DOCKER_NETWORK,
     docker_url='unix://var/run/docker.sock',
@@ -177,7 +204,10 @@ end = DummyOperator(
 )
 
 # 태스크 의존성 설정
-start >> collect_news >> process_text >> end
+start >> collect_news
+collect_news >> [store_to_s3, process_text]
+[store_to_s3, process_text] >> end
+
 # [process_topics, process_sentiment]
 # process_topics >> create_summary
 

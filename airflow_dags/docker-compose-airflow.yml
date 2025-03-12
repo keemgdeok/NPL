@@ -45,7 +45,7 @@ services:
       interval: 10s
       retries: 5
       start_period: 5s
-    restart: always
+    restart: no
     networks:
       - npl-network
 
@@ -61,7 +61,7 @@ services:
       timeout: 10s
       retries: 5
       start_period: 30s
-    restart: always
+    restart: no
     networks:
       - npl-network
     user: "${AIRFLOW_UID:-50000}:0"
@@ -82,7 +82,7 @@ services:
       timeout: 10s
       retries: 5
       start_period: 30s
-    restart: always
+    restart: no
     networks:
       - npl-network
     group_add:
