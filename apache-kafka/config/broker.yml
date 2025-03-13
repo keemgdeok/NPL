@@ -1,0 +1,27 @@
+broker:
+  id: 0
+  listeners:
+    - PLAINTEXT://:9092
+    - CONTROLLER://:9093
+  log.dirs: /var/lib/kafka/data
+  zookeeper.connect: zookeeper:2181
+  
+# 성능 설정
+performance:
+  num.network.threads: 3
+  num.io.threads: 8
+  socket.send.buffer.bytes: 102400
+  socket.receive.buffer.bytes: 102400
+  socket.request.max.bytes: 104857600
+  
+# 토픽 기본 설정
+topic:
+  default.replication.factor: 3
+  num.partitions: 3
+  min.insync.replicas: 2
+  
+# 로그 설정
+log:
+  retention.hours: 168  # 7일
+  segment.bytes: 1073741824  # 1GB
+  retention.check.interval.ms: 300000  # 5분 

@@ -1,0 +1,82 @@
+services:
+  zookeeper:
+    image: confluentinc/cp-zookeeper:latest
+    container_name: npl-zookeeper
+    ports:
+      - "2181:2181"
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    volumes:
+      - zookeeper-data:/var/lib/zookeeper/data
+      - zookeeper-log:/var/lib/zookeeper/log
+    networks:
+      - npl-network
+
+    
+  kafka:
+    image: confluentinc/cp-kafka:latest
+    container_name: npl-kafka
+    depends_on:
+      - zookeeper
+    ports:
+      - "9092:9092"
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:29092,PLAINTEXT_HOST://localhost:9092
+      KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
+      KAFKA_INTER_BROKER_LISTENER_NAME: PLAINTEXT
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      KAFKA_DELETE_TOPIC_ENABLE: "true"
+      KAFKA_NUM_PARTITIONS: 3
+      KAFKA_LOG_RETENTION_HOURS: 168
+      KAFKA_LISTENERS: PLAINTEXT://0.0.0.0:29092,PLAINTEXT_HOST://0.0.0.0:9092
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+      - ./config:/etc/kafka/config:ro
+    networks:
+      - npl-network
+
+  kafka-ui:
+    image: provectuslabs/kafka-ui:latest
+    container_name: npl-kafka-ui
+    depends_on:
+      - kafka
+    ports:
+      - "8080:8080"
+    environment:
+      KAFKA_CLUSTERS_0_NAME: npl-cluster
+      KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
+      KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
+    networks:
+      - npl-network
+
+  kafka-topics-generator:
+    image: confluentinc/cp-kafka:latest
+    container_name: npl-kafka-topics-generator
+    depends_on:
+      - kafka
+    volumes:
+      - ./config:/config
+      - ./scripts:/scripts
+    command: >
+      bash -c "
+        echo 'Waiting for Kafka to be available...' &&
+        cub kafka-ready -b kafka:29092 1 120 &&
+        echo 'Creating topics...' &&
+        /scripts/create_topics.sh"
+    networks:
+      - npl-network
+
+
+volumes:
+  zookeeper-data:
+  zookeeper-log:
+  kafka-data:
+
+networks:
+  npl-network:
+    external: true
+    name: npl-network

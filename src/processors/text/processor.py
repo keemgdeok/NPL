@@ -173,4 +173,47 @@ class TextProcessor:
         """리소스 정리"""
         self.consumer.close()
         self.producer.close()
-        self.mongo_client.close() 
+        self.mongo_client.close()
+
+    def process_stream_once(self):
+        """스트림에서 메시지를 한 번만 처리하고 종료"""
+        logger.info("일회성 메시지 처리를 시작합니다...")
+        
+        # 타임아웃 설정 (예: 30초)
+        messages = self.consumer.poll(timeout_ms=30000)
+        
+        if not messages:
+            logger.info("처리할 메시지가 없습니다.")
+            return
+        
+        logger.info(f"{sum(len(records) for records in messages.values())}개의 메시지를 처리합니다.")
+        
+        # 메시지 처리
+        for tp, records in messages.items():
+            for record in records:
+                try:
+                    # 메시지에서 뉴스 기사 데이터 파싱
+                    article_data = record.value
+                    logger.info(f"메시지 수신: {article_data.get('title', 'Unknown Title')} (토픽: {record.topic})")
+                    
+                    article = NewsArticle.from_dict(article_data)
+                    
+                    # 기사 처리
+                    processed_data = self.process_article(article)
+                    logger.info(f"기사 처리 완료: {processed_data['title']}")
+                    
+                    # MongoDB에 저장
+                    self._save_to_mongodb(processed_data)
+                    logger.info(f"MongoDB 저장 완료: {processed_data['title']}")
+                    
+                    # 처리된 데이터를 다음 단계로 전송
+                    self._send_to_kafka(processed_data)
+                    logger.info(f"Kafka 전송 완료: {processed_data['title']} -> news.{processed_data['category']}.processed")
+                    
+                except Exception as e:
+                    logger.error(f"메시지 처리 중 오류 발생: {str(e)}")
+                    continue
+        
+        # 처리한 offset commit
+        self.consumer.commit()
+        logger.info("일회성 메시지 처리를 완료했습니다.") 

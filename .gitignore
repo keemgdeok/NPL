@@ -67,3 +67,7 @@ test_results/
 
 # Documentation
 README.md
+
+# Cursor rules
+.cursor/rules/
+
