@@ -64,7 +64,7 @@ services:
     command: >
       bash -c "
         echo 'Waiting for Kafka to be available...' &&
-        cub kafka-ready -b kafka:29092 1 120 &&
+        cub kafka-ready -b kafka:29092 1 60 &&
         echo 'Creating topics...' &&
         /scripts/create_topics.sh"
     networks:
