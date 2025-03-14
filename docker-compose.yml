@@ -57,30 +57,20 @@ services:
       - DATABASE_NAME=news_db
     networks:
       - npl-network
-
-  # 토픽 처리기
-  topic-processor:
-    build:
-      context: .
-      dockerfile: docker/topic-processor.Dockerfile
-    container_name: npl-topic-processor
-    depends_on:
-      - mongodb
-    environment:
-      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
-      - MONGODB_URI=mongodb://mongodb:27017
-      - DATABASE_NAME=news_db
-    networks:
-      - npl-network
-    volumes:
-      - ./models:/app/models
-
+      
   # 감정 분석 처리기
   sentiment-processor:
     build:
       context: .
       dockerfile: docker/sentiment-processor.Dockerfile
     container_name: npl-sentiment-processor
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
     depends_on:
       - mongodb
     environment:
@@ -91,37 +81,37 @@ services:
       - npl-network
 
   # API 서버
-  api:
-    build:
-      context: .
-      dockerfile: docker/api.Dockerfile
-    container_name: npl-api
-    ports:
-      - "8000:8000"
-    depends_on:
-      - mongodb
-    environment:
-      - MONGODB_URI=mongodb://mongodb:27017
-      - DATABASE_NAME=news_db
-      - API_HOST=0.0.0.0
-      - API_PORT=8000
-    networks:
-      - npl-network
+  # api:
+  #   build:
+  #     context: .
+  #     dockerfile: docker/api.Dockerfile
+  #   container_name: npl-api
+  #   ports:
+  #     - "8000:8000"
+  #   depends_on:
+  #     - mongodb
+  #   environment:
+  #     - MONGODB_URI=mongodb://mongodb:27017
+  #     - DATABASE_NAME=news_db
+  #     - API_HOST=0.0.0.0
+  #     - API_PORT=8000
+  #   networks:
+  #     - npl-network
 
   # 대시보드
-  dashboard:
-    build:
-      context: .
-      dockerfile: docker/dashboard.Dockerfile
-    container_name: npl-dashboard
-    ports:
-      - "8501:8501"
-    depends_on:
-      - api
-    environment:
-      - API_URL=http://api:8000
-    networks:
-      - npl-network
+  # dashboard:
+  #   build:
+  #     context: .
+  #     dockerfile: docker/dashboard.Dockerfile
+  #   container_name: npl-dashboard
+  #   ports:
+  #     - "8501:8501"
+  #   depends_on:
+  #     - api
+  #   environment:
+  #     - API_URL=http://api:8000
+  #   networks:
+  #     - npl-network
 
 # networks:
 #   npl-network:
