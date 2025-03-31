@@ -79,6 +79,28 @@ services:
       - DATABASE_NAME=news_db
     networks:
       - npl-network
+      
+  # 요약 처리기
+  summary-processor:
+    build:
+      context: .
+      dockerfile: docker/summary-processor.Dockerfile
+    container_name: npl-summary-processor
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    depends_on:
+      - mongodb
+    environment:
+      - KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - MONGODB_URI=mongodb://mongodb:27017
+      - DATABASE_NAME=news_db
+    networks:
+      - npl-network
 
   # API 서버
   # api:
