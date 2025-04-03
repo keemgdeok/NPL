@@ -54,10 +54,13 @@ class Config:
     def validate(cls):
         """필수 환경 변수 검증"""
         required_vars = [
-            "AWS_ACCESS_KEY_ID",
-            "AWS_SECRET_ACCESS_KEY",
             "MONGODB_URI"
         ]
+        
+        # S3 기능을 사용하는 컴포넌트에서만 AWS 자격증명 검사
+        component_name = os.getenv("COMPONENT_NAME", "")
+        if "collector" in component_name.lower() and "s3" in component_name.lower():
+            required_vars.extend(["AWS_ACCESS_KEY_ID", "AWS_SECRET_ACCESS_KEY"])
         
         missing_vars = [var for var in required_vars if not getattr(cls, var)]
         if missing_vars:

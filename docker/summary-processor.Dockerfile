@@ -37,8 +37,8 @@ COPY src/ /app/src/
 # 모델 다운로드 및 저장
 WORKDIR /app
 ENV PYTHONPATH=/app
-RUN mkdir -p /app/models/kr-finbert-sc && \
-    python -m src.processors.sentiment.setup --output-dir=/app/models/kr-finbert-sc
+RUN mkdir -p /app/models/kobart-summarization-model && \
+    python -m src.processors.summary.setup --output-dir=/app/models/kobart-summarization-model
 
 # ================================
 # 2단계: 실행 스테이지
@@ -72,11 +72,11 @@ ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
 ENV NVIDIA_VISIBLE_DEVICES=all
 ENV NVIDIA_DRIVER_CAPABILITIES=compute,utility
-ENV COMPONENT_NAME="sentiment-processor"
+ENV COMPONENT_NAME="summary-processor"
 
 # 컨테이너 시작 시 헬스체크 지원
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD curl -f http://localhost:8000/health || exit 1
 
 # 모델 경로를 명시적으로 지정하여 실행
-CMD ["python3", "-m", "src.processors.sentiment.run_processor", "--model-path=/app/models/kr-finbert-sc"] 
+CMD ["python3", "-m", "src.processors.summary.run_processor", "--model-path=/app/models/kobart-summarization-model"] 

@@ -99,15 +99,8 @@ topics:
       "retention.ms": 1209600000
       "cleanup.policy": "delete"
   
+
   # 토픽 분석 결과
-  - name: "news.economy.topic"
-    partitions: 3
-    replication_factor: 3
-    config:
-      "retention.ms": 2592000000  # 30일
-      "cleanup.policy": "delete"
-      
-  # 감정 분석 결과
   - name: "news.economy.sentiment"
     partitions: 3
     replication_factor: 3
@@ -115,4 +108,99 @@ topics:
       "retention.ms": 2592000000  # 30일
       "cleanup.policy": "delete"
       
-  # 기타 카테고리의 토픽 및 감정 분석 토픽은 필요에 따라 추가 
+  # 감정 분석 결과
+  - name: "news.business.sentiment"
+    partitions: 3
+    replication_factor: 3
+    config:
+      "retention.ms": 2592000000  # 30일
+      "cleanup.policy": "delete"
+  
+  - name: "news.society.sentiment"
+    partitions: 3
+    replication_factor: 3
+    config:
+      "retention.ms": 2592000000  # 30일
+      "cleanup.policy": "delete"
+
+  - name: "news.world.sentiment"
+    partitions: 3
+    replication_factor: 3
+    config:
+      "retention.ms": 2592000000  # 30일
+      "cleanup.policy": "delete"
+  
+  - name: "news.politics.sentiment"
+    partitions: 3
+    replication_factor: 3
+    config:
+      "retention.ms": 2592000000  # 30일
+      "cleanup.policy": "delete"
+    
+  - name: "news.it.sentiment"
+    partitions: 3
+    replication_factor: 3
+    config:
+      "retention.ms": 2592000000  # 30일
+      "cleanup.policy": "delete"
+  
+  - name: "news.culture.sentiment"
+    partitions: 3
+    replication_factor: 3
+    config:
+      "retention.ms": 2592000000  # 30일
+      "cleanup.policy": "delete"
+    
+  # 요약 결과
+  - name: "news.economy.summary"
+    partitions: 3
+    replication_factor: 3
+    config:
+      "retention.ms": 2592000000  # 30일
+      "cleanup.policy": "delete"
+      
+  - name: "news.business.summary"
+    partitions: 3
+    replication_factor: 3
+    config:
+      "retention.ms": 2592000000  # 30일
+      "cleanup.policy": "delete"
+  
+  - name: "news.society.summary"
+    partitions: 3
+    replication_factor: 3
+    config:
+      "retention.ms": 2592000000  # 30일
+      "cleanup.policy": "delete"
+
+  - name: "news.world.summary"
+    partitions: 3
+    replication_factor: 3
+    config:
+      "retention.ms": 2592000000  # 30일
+      "cleanup.policy": "delete"
+  
+  - name: "news.politics.summary"
+    partitions: 3
+    replication_factor: 3
+    config:
+      "retention.ms": 2592000000  # 30일
+      "cleanup.policy": "delete"
+    
+  - name: "news.it.summary"
+    partitions: 3
+    replication_factor: 3
+    config:
+      "retention.ms": 2592000000  # 30일
+      "cleanup.policy": "delete"
+  
+  - name: "news.culture.summary"
+    partitions: 3
+    replication_factor: 3
+    config:
+      "retention.ms": 2592000000  # 30일
+      "cleanup.policy": "delete"
+    
+
+      
+ 

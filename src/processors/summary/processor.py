@@ -6,17 +6,17 @@ from pymongo import MongoClient
 import os
 import logging  
 import time
-from .analyzer import SentimentAnalyzer
+from .summarizer import TextSummarizer
 from ...collectors.utils.config import Config
 
-logger = logging.getLogger("sentiment-processor")
+logger = logging.getLogger("summary-processor")
 
-class SentimentProcessor:
+class SummaryProcessor:
     def __init__(self, model_path: str = None):
-        # KR-FinBert-SC 금융 도메인 특화 감성분석 모델 사용
-        self.analyzer = SentimentAnalyzer(model_path=model_path)
+        # KoBART 요약 모델 사용
+        self.summarizer = TextSummarizer(model_path=model_path)
         
-        # Kafka 설정 - 모든 카테고리의 processed 토픽 구독
+        # Kafka 설정 - 모든 카테고리의 processed 토픽 구독 (sentiment 대신)
         processed_topics = [f"{Config.KAFKA_TOPIC_PREFIX}.{category}.processed" 
                             for category in Config.CATEGORIES.keys()]
         
@@ -28,7 +28,7 @@ class SentimentProcessor:
             value_deserializer=lambda x: json.loads(x.decode('utf-8')),
             auto_offset_reset='latest',
             enable_auto_commit=True,
-            group_id="sentiment-processor-group"
+            group_id="summary-processor-group"
         )
         
         self.producer = KafkaProducer(
@@ -46,48 +46,52 @@ class SentimentProcessor:
         # MongoDB 설정
         self.mongo_client = MongoClient(Config.MONGODB_URI)
         self.db = self.mongo_client[Config.DATABASE_NAME]
-        self.collection = self.db['sentiment_articles']
+        self.collection = self.db['summary_articles']
         
         # 인덱스 생성
         self.collection.create_index([("url", 1)], unique=True)
         self.collection.create_index([("category", 1), ("published_at", -1)])
-        self.collection.create_index([("sentiment_analysis.overall_sentiment.sentiment", 1)])
+        self.collection.create_index([("summary_info.summary_length", 1)])
     
     def process_article(self, article_data: Dict[str, Any]) -> Dict[str, Any]:
-        """기사의 감정 분석
+        """기사 요약 수행
         
         Args:
-            article_data: 분석할 기사 데이터
+            article_data: 요약할 기사 데이터
             
         Returns:
-            감정 분석 결과가 추가된 기사 데이터
+            요약 결과가 추가된 기사 데이터
         """
-        # 전체 내용에 대한 감정 분석
+        # 전체 내용에 대한 요약 수행
         processed_content = article_data["processed_content"]
-        content_sentiment = self.analyzer.analyze(processed_content)
         
-        # 이미 전처리된 키워드 사용 (없으면 빈 리스트)
-        tokens = article_data.get("keywords", [])
-        logger.info(f"키워드 수: {len(tokens)}")
-        
-        # 감정별 키워드 추출
-        sentiment_keywords = self.analyzer.get_sentiment_keywords(
+        # 3-5 문장으로 요약 생성
+        summary_result = self.summarizer.summarize(
             processed_content,
-            tokens
+            max_length=1024,  # 입력 토큰 최대 길이
+            summary_max_length=0,  # 사용하지 않음 (3-5문장이 기본값)
+            num_beams=5  # 빔 서치 크기 증가
         )
+        
+        # 제목과 요약 결합하여 키워드 추출 (옵션)
+        title = article_data.get("title", "")
+        summary_with_title = f"{title} {summary_result['summary']}"
         
         # 결과 데이터 생성
         result = article_data.copy()
         result.update({
-            "sentiment_analysis": {
-                "overall_sentiment": content_sentiment,
-                "sentiment_keywords": sentiment_keywords,
+            "summary_info": {
+                "summary": summary_result["summary"],
+                "original_length": summary_result["original_length"],
+                "summary_length": summary_result["summary_length"],
+                "sentence_count": summary_result.get("sentence_count", 0),  # 문장 수 정보 추가
+                "compression_ratio": summary_result["summary_length"] / max(1, summary_result["original_length"]),
                 "model_info": {
-                    "name": "KR-FinBert-SC", 
-                    "type": "financial domain sentiment analysis"
+                    "name": "KoBART-summarization", 
+                    "type": "korean text summarization"
                 }
             },
-            "sentiment_processed_at": datetime.now().isoformat()
+            "summary_processed_at": datetime.now().isoformat()
         })
         
         return result
@@ -122,13 +126,13 @@ class SentimentProcessor:
                                 article_data = message.value
                                 category = message.topic.split('.')[1]
                                 
-                                logger.info(f"카테고리 '{category}'의 기사 처리 중: {article_data.get('title', '제목 없음')[:30]}...")
+                                logger.info(f"카테고리 '{category}'의 기사 요약 중: {article_data.get('title', '제목 없음')[:30]}...")
                                 
                                 # 카테고리 정보가 없으면 추가
                                 if 'category' not in article_data:
                                     article_data['category'] = category
                                 
-                                # 감정 분석
+                                # 요약 수행
                                 processed_data = self.process_article(article_data)
                                 
                                 # MongoDB에 저장
@@ -137,7 +141,8 @@ class SentimentProcessor:
                                 # 처리된 데이터를 다음 단계로 전송
                                 self._send_to_kafka(processed_data, category)
                                 
-                                logger.info(f"기사 처리 완료: {processed_data.get('sentiment_analysis', {}).get('overall_sentiment', {}).get('sentiment', 'unknown')}")
+                                summary_length = processed_data.get('summary_info', {}).get('summary_length', 0)
+                                logger.info(f"기사 요약 완료: 요약 길이 {summary_length}자")
                                 
                             except Exception as e:
                                 logger.error(f"메시지 처리 오류: {str(e)}", exc_info=True)
@@ -167,7 +172,7 @@ class SentimentProcessor:
         start_date = datetime.now() - timedelta(days=days)
         query["published_at"] = {"$gte": start_date.isoformat()}
         
-        # 'processed_articles' 컬렉션에서 전처리된 기사 가져오기
+        # 'processed_articles' 컬렉션에서 처리된 기사 가져오기 (sentiment_articles 대신)
         articles = self.db['processed_articles'].find(query)
         processed_count = 0
         
@@ -180,13 +185,13 @@ class SentimentProcessor:
                 processed_count += 1
                 
                 if processed_count % 100 == 0:
-                    logger.info(f"현재까지 {processed_count}개 기사 처리 완료")
+                    logger.info(f"현재까지 {processed_count}개 기사 요약 완료")
                 
             except Exception as e:
-                logger.error(f"기사 처리 오류: {str(e)}")
+                logger.error(f"기사 요약 오류: {str(e)}")
                 continue
         
-        logger.info(f"배치 처리 완료: 총 {processed_count}개 기사 처리됨")
+        logger.info(f"배치 처리 완료: 총 {processed_count}개 기사 요약됨")
     
     def _save_to_mongodb(self, data: Dict[str, Any]):
         """처리된 데이터를 MongoDB에 저장
@@ -211,8 +216,8 @@ class SentimentProcessor:
             category: 뉴스 카테고리
         """
         try:
-            # 카테고리별 감정 분석 토픽으로 전송
-            topic = f"{Config.KAFKA_TOPIC_PREFIX}.{category}.sentiment"
+            # 카테고리별 요약 토픽으로 전송
+            topic = f"{Config.KAFKA_TOPIC_PREFIX}.{category}.summary"
             self.producer.send(topic, value=data)
             logger.debug(f"Kafka 토픽 전송 완료: {topic}")
         except Exception as e:

@@ -1,5 +1,5 @@
 import argparse
-from .processor import SentimentProcessor
+from .processor import SummaryProcessor
 import logging
 import os
 from ...collectors.utils.config import Config
@@ -10,7 +10,7 @@ logging.basicConfig(
     level=getattr(logging, Config.LOG_LEVEL),
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
-logger = logging.getLogger("sentiment-processor")
+logger = logging.getLogger("summary-processor")
 
 def main():
     # 환경 검증
@@ -20,18 +20,18 @@ def main():
         logger.error(f"설정 오류: {str(e)}")
         return
     
-    parser = argparse.ArgumentParser(description='금융 뉴스 감정 분석기 (KR-FinBert-SC 모델 사용)')
+    parser = argparse.ArgumentParser(description='뉴스 기사 요약기 (KoBART 모델 사용)')
     parser.add_argument('--mode', choices=['stream', 'batch'], default='stream',
                       help='처리 모드 선택 (stream: 실시간, batch: 배치)')
     parser.add_argument('--category', type=str, choices=list(Config.CATEGORIES.keys()),
                       help=f'처리할 카테고리 (배치 모드에서만 사용). 선택 가능: {", ".join(Config.CATEGORIES.keys())}')
     parser.add_argument('--days', type=int, default=1,
                       help='처리할 기간 (일 단위, 배치 모드에서만 사용)')
-    parser.add_argument('--model-path', type=str, default='models/kr-finbert-sc',
+    parser.add_argument('--model-path', type=str, default='/mnt/c/Users/keemg/npl/models/kobart-summarization-model',
                       help='로컬에 저장된 모델 경로 (없으면 Hugging Face에서 다운로드)')
     parser.add_argument('--list-topics', action='store_true',
                       help='처리 가능한 Kafka 토픽 목록 출력')
-    parser.add_argument('--idle-timeout', type=int, default=10,
+    parser.add_argument('--idle-timeout', type=int, default=30,
                       help='스트림 모드에서 지정된 시간(초) 동안 메시지가 없으면 자동 종료 (기본값: 무제한)')
     
     args = parser.parse_args()
@@ -43,9 +43,9 @@ def main():
         print("입력 토픽 (processed):")
         for category in Config.CATEGORIES:
             print(f"  - {Config.KAFKA_TOPIC_PREFIX}.{category}.processed")
-        print("\n출력 토픽 (sentiment):")
+        print("\n출력 토픽 (summary):")
         for category in Config.CATEGORIES:
-            print(f"  - {Config.KAFKA_TOPIC_PREFIX}.{category}.sentiment")
+            print(f"  - {Config.KAFKA_TOPIC_PREFIX}.{category}.summary")
         print("=" * 50)
         return
     
@@ -60,14 +60,14 @@ def main():
             else:
                 logger.warning(f"지정된 모델 경로가 존재하지 않습니다: {args.model_path}")
                 logger.info("모델을 다운로드하려면 다음 명령을 실행하세요:")
-                logger.info(f"python -m src.processors.sentiment.setup --output-dir={args.model_path}")
+                logger.info(f"python -m src.processors.summary.setup --output-dir={args.model_path}")
                 return
         
-        logger.info(f"금융 뉴스 감성 분석 시작 - KR-FinBert-SC 모델 사용 (디바이스: {torch.device('cuda' if torch.cuda.is_available() else 'cpu')})")
+        logger.info(f"뉴스 기사 요약 시작 - KoBART 모델 사용 (디바이스: {torch.device('cuda' if torch.cuda.is_available() else 'cpu')})")
         logger.info(f"카테고리 목록: {', '.join([f'{k}({v})' for k, v in Config.CATEGORIES.items()])}")
         
         # 프로세서 초기화 - 여기서 모든 리소스(Kafka, MongoDB)가 설정됨
-        processor = SentimentProcessor(model_path=args.model_path)
+        processor = SummaryProcessor(model_path=args.model_path)
         
         # 처리 모드에 따라 실행
         if args.mode == 'stream':
