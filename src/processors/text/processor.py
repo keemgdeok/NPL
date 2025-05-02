@@ -2,13 +2,13 @@ from typing import Dict, Any, List
 from datetime import datetime, timedelta
 import json
 from kafka import KafkaConsumer, KafkaProducer
-from pymongo import MongoClient
 import time
 import logging
 
 from .preprocessor import TextPreprocessor
 from ...collectors.utils.config import Config
 from ...collectors.utils.models import NewsArticle
+from ...common.database.repositories.article_repository import ProcessedArticleRepository
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
@@ -17,6 +17,9 @@ logger = logging.getLogger(__name__)
 class TextProcessor:
     def __init__(self):
         self.preprocessor = TextPreprocessor()
+        
+        # Repository 초기화
+        self.repository = ProcessedArticleRepository()
         
         # Kafka 연결 재시도 설정
         retries = 0
@@ -60,15 +63,6 @@ class TextProcessor:
             bootstrap_servers=Config.KAFKA_BOOTSTRAP_SERVERS,
             value_serializer=lambda x: json.dumps(x).encode('utf-8')
         )
-        
-        # MongoDB 설정
-        self.mongo_client = MongoClient(Config.MONGODB_URI)
-        self.db = self.mongo_client[Config.DATABASE_NAME]
-        self.collection = self.db['processed_articles']
-        
-        # 인덱스 생성
-        self.collection.create_index([("url", 1)], unique=True)
-        self.collection.create_index([("category", 1), ("published_at", -1)])
     
     def process_article(self, article: NewsArticle) -> Dict[str, Any]:
         """뉴스 기사 처리"""
@@ -104,8 +98,8 @@ class TextProcessor:
                     processed_data = self.process_article(article)
                     logger.info(f"기사 처리 완료: {processed_data['title']}")
                     
-                    # MongoDB에 저장
-                    self._save_to_mongodb(processed_data)
+                    # MongoDB에 저장 (Repository 패턴 사용)
+                    self.repository.save_article(processed_data)
                     logger.info(f"MongoDB 저장 완료: {processed_data['title']}")
                     
                     # 처리된 데이터를 다음 단계로 전송
@@ -123,35 +117,28 @@ class TextProcessor:
     
     def process_batch(self, category: str = None, days: int = 1):
         """MongoDB에서 데이터를 배치로 처리"""
-        query = {}
-        if category:
-            query["category"] = category
-            
-        start_date = datetime.now() - timedelta(days=days)
-        query["published_at"] = {"$gte": start_date.isoformat()}
+        from ...common.database.repositories.article_repository import RawArticleRepository
         
-        articles = self.db['news_articles'].find(query)
+        raw_repo = RawArticleRepository()
+        
+        if category:
+            articles = raw_repo.get_articles_by_category(category, days=days)
+        else:
+            # 모든 카테고리 처리
+            articles = []
+            for category in Config.CATEGORIES.keys():
+                articles.extend(raw_repo.get_articles_by_category(category, days=days))
         
         for article_data in articles:
             try:
                 article = NewsArticle.from_dict(article_data)
                 processed_data = self.process_article(article)
-                self._save_to_mongodb(processed_data)
+                self.repository.save_article(processed_data)
                 self._send_to_kafka(processed_data)
+                logger.info(f"배치 처리 완료: {processed_data['title']}")
             except Exception as e:
-                print(f"Error processing article: {str(e)}")
+                logger.error(f"기사 처리 오류: {str(e)}")
                 continue
-    
-    def _save_to_mongodb(self, data: Dict[str, Any]):
-        """처리된 데이터를 MongoDB에 저장"""
-        try:
-            self.collection.update_one(
-                {"url": data["url"]},
-                {"$set": data},
-                upsert=True
-            )
-        except Exception as e:
-            print(f"Error saving to MongoDB: {str(e)}")
     
     def _send_to_kafka(self, data: Dict[str, Any]):
         """처리된 데이터를 Kafka로 전송"""
@@ -173,7 +160,7 @@ class TextProcessor:
         """리소스 정리"""
         self.consumer.close()
         self.producer.close()
-        self.mongo_client.close()
+        # Repository는 자동으로 정리됨
 
     def process_stream_once(self):
         """스트림에서 메시지를 한 번만 처리하고 종료"""
@@ -203,7 +190,7 @@ class TextProcessor:
                     logger.info(f"기사 처리 완료: {processed_data['title']}")
                     
                     # MongoDB에 저장
-                    self._save_to_mongodb(processed_data)
+                    self.repository.save_article(processed_data)
                     logger.info(f"MongoDB 저장 완료: {processed_data['title']}")
                     
                     # 처리된 데이터를 다음 단계로 전송
