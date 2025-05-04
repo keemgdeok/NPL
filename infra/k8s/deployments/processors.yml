@@ -1,0 +1,240 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: text-processor
+  namespace: news-platform
+  labels:
+    app: news-processing
+    component: text-processor
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: news-processing
+      component: text-processor
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app: news-processing
+        component: text-processor
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: "/metrics"
+        prometheus.io/port: "8080"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+      - name: text-processor
+        image: text-processor:v1.0.0
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          allowPrivilegeEscalation: false
+          readOnlyRootFilesystem: true
+          capabilities:
+            drop: ["ALL"]
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1"
+        env:
+        - name: KAFKA_BOOTSTRAP_SERVERS
+          value: "kafka-svc.news-platform.svc.cluster.local:9092"
+        - name: MONGODB_URI
+          value: "mongodb://mongodb-svc.news-platform.svc.cluster.local:27017"
+        - name: DATABASE_NAME
+          value: "news_db"
+        - name: PROCESSOR_LOG_LEVEL
+          value: "INFO"
+        volumeMounts:
+        - name: tmp-volume
+          mountPath: /tmp
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 30
+          periodSeconds: 10
+      volumes:
+      - name: tmp-volume
+        emptyDir: {}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: sentiment-processor
+  namespace: news-platform
+  labels:
+    app: news-processing
+    component: sentiment-processor
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: news-processing
+      component: sentiment-processor
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app: news-processing
+        component: sentiment-processor
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: "/metrics"
+        prometheus.io/port: "8080"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+      - name: sentiment-processor
+        image: sentiment-processor:v1.0.0
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1"
+          limits:
+            memory: "4Gi"
+            cpu: "2"
+        env:
+        - name: KAFKA_BOOTSTRAP_SERVERS
+          value: "kafka-svc.news-platform.svc.cluster.local:9092"
+        - name: MONGODB_URI
+          value: "mongodb://mongodb-svc.news-platform.svc.cluster.local:27017"
+        - name: DATABASE_NAME
+          value: "news_db"
+        - name: PROCESSOR_LOG_LEVEL
+          value: "INFO"
+        volumeMounts:
+        - name: models-volume
+          mountPath: /app/models
+          readOnly: true
+        - name: tmp-volume
+          mountPath: /tmp
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 90
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 10
+      volumes:
+      - name: models-volume
+        persistentVolumeClaim:
+          claimName: models-pvc
+      - name: tmp-volume
+        emptyDir: {}
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: topic-processor
+  namespace: news-platform
+  labels:
+    app: news-processing
+    component: topic-processor
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: news-processing
+      component: topic-processor
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app: news-processing
+        component: topic-processor
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: "/metrics"
+        prometheus.io/port: "8080"
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+      - name: topic-processor
+        image: topic-processor:v1.0.0
+        imagePullPolicy: IfNotPresent
+        securityContext:
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop: ["ALL"]
+        resources:
+          requests:
+            memory: "2Gi"
+            cpu: "1"
+          limits:
+            memory: "4Gi"
+            cpu: "2"
+        env:
+        - name: KAFKA_BOOTSTRAP_SERVERS
+          value: "kafka-svc.news-platform.svc.cluster.local:9092"
+        - name: MONGODB_URI
+          value: "mongodb://mongodb-svc.news-platform.svc.cluster.local:27017"
+        - name: DATABASE_NAME
+          value: "news_db"
+        - name: PROCESSOR_LOG_LEVEL
+          value: "INFO"
+        volumeMounts:
+        - name: models-volume
+          mountPath: /app/models
+          readOnly: true
+        - name: tmp-volume
+          mountPath: /tmp
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8080
+          initialDelaySeconds: 90
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8080
+          initialDelaySeconds: 60
+          periodSeconds: 10
+      volumes:
+      - name: models-volume
+        persistentVolumeClaim:
+          claimName: models-pvc
+      - name: tmp-volume
+        emptyDir: {} 
