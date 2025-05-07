@@ -4,23 +4,39 @@ x-airflow-common:
   environment:
     &airflow-common-env
     AIRFLOW__CORE__EXECUTOR: LocalExecutor
-    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
-    AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:airflow@postgres/airflow
-    AIRFLOW__CORE__FERNET_KEY: ''
+    AIRFLOW__DATABASE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:${POSTGRES_PASSWORD:-airflow}@postgres/airflow
+    AIRFLOW__CORE__SQL_ALCHEMY_CONN: postgresql+psycopg2://airflow:${POSTGRES_PASSWORD:-airflow}@postgres/airflow
+    AIRFLOW__CORE__FERNET_KEY: ${AIRFLOW__CORE__FERNET_KEY:-}
     AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: 'true'
     AIRFLOW__CORE__LOAD_EXAMPLES: 'false'
     AIRFLOW__API__AUTH_BACKENDS: 'airflow.api.auth.backend.basic_auth,airflow.api.auth.backend.session'
-    AIRFLOW__WEBSERVER__SECRET_KEY: 'news-pipeline-key'
+    AIRFLOW__WEBSERVER__SECRET_KEY: ${AIRFLOW__WEBSERVER__SECRET_KEY:-news-pipeline-key}
     AIRFLOW__WEBSERVER__WEB_SERVER_PORT: '8081'
     AIRFLOW__WEBSERVER__EXPOSE_CONFIG: 'false'
     AIRFLOW__SCHEDULER__MIN_FILE_PROCESS_INTERVAL: '60'
     AIRFLOW__CORE__DEFAULT_TIMEZONE: Asia/Seoul
+    # 보안 설정
+    AIRFLOW__WEBSERVER__ENABLE_PROXY_FIX: 'true'
+    AIRFLOW__CORE__SECURE_MODE: 'true'
+    AIRFLOW__WEBSERVER__COOKIE_SECURE: 'true'
+    AIRFLOW__WEBSERVER__COOKIE_SAMESITE: 'Lax'
+    # 성능 설정
+    AIRFLOW__SCHEDULER__PARSING_PROCESSES: '2'
+    AIRFLOW__CORE__PARALLELISM: '16'
+    AIRFLOW__CORE__DAG_CONCURRENCY: '8'
+    AIRFLOW__CORE__MAX_ACTIVE_RUNS_PER_DAG: '4'
+    # 작업 설정
+    AIRFLOW__SCHEDULER__JOB_HEARTBEAT_SEC: '30'
+    AIRFLOW__SCHEDULER__SCHEDULER_HEARTBEAT_SEC: '10'
+    # 로깅 설정
+    AIRFLOW__LOGGING__BASE_LOG_FOLDER: '/opt/airflow/logs'
+    AIRFLOW__LOGGING__DAG_PROCESSOR_MANAGER_LOG_LOCATION: '/opt/airflow/logs/dag_processor_manager/dag_processor_manager.log'
   volumes:
-    - ./airflow/dags:/opt/airflow/dags
+    - ./airflow/dags:/opt/airflow/dags:ro
     - ./airflow/logs:/opt/airflow/logs
     - ./airflow/plugins:/opt/airflow/plugins
     - ./airflow/config:/opt/airflow/config
-    - ./airflow/models:/opt/airflow/dags/project/models
+    - ./airflow/models:/opt/airflow/dags/project/models:ro
     - /var/run/docker.sock:/var/run/docker.sock
   user: "${AIRFLOW_UID:-50000}:0"
   group_add:
@@ -29,6 +45,21 @@ x-airflow-common:
     &airflow-common-depends-on
     postgres:
       condition: service_healthy
+  deploy:
+    resources:
+      limits:
+        cpus: "2.0"
+        memory: 2G
+      reservations:
+        cpus: "1.0"
+        memory: 1G
+  restart: unless-stopped
+  healthcheck:
+    test: ["CMD", "curl", "--fail", "http://localhost:8081/health"]
+    interval: 30s
+    timeout: 10s
+    retries: 5
+    start_period: 30s
 
 services:
   postgres:
@@ -36,7 +67,7 @@ services:
     container_name: npl-airflow-postgres
     environment:
       POSTGRES_USER: airflow
-      POSTGRES_PASSWORD: airflow
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-airflow}
       POSTGRES_DB: airflow
     volumes:
       - postgres-db-volume:/var/lib/postgresql/data
@@ -45,9 +76,17 @@ services:
       interval: 10s
       retries: 5
       start_period: 5s
-    restart: no
+    restart: unless-stopped
     networks:
       - npl-network
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1G
+        reservations:
+          cpus: "0.5"
+          memory: 500M
 
   airflow-webserver:
     <<: *airflow-common
@@ -61,7 +100,7 @@ services:
       timeout: 10s
       retries: 5
       start_period: 30s
-    restart: no
+    restart: unless-stopped
     networks:
       - npl-network
     user: "${AIRFLOW_UID:-50000}:0"
@@ -71,6 +110,12 @@ services:
       <<: *airflow-common-depends-on
       airflow-init:
         condition: service_completed_successfully
+    environment:
+      <<: *airflow-common-env
+      # 추가 보안 설정
+      AIRFLOW__WEBSERVER__RBAC: 'true'
+      AIRFLOW__WEBSERVER__EXPOSE_CONFIG: 'false'
+      AIRFLOW__WEBSERVER__INSTANCE_NAME: '뉴스 파이프라인 - 에어플로우'
 
   airflow-scheduler:
     <<: *airflow-common
@@ -82,7 +127,7 @@ services:
       timeout: 10s
       retries: 5
       start_period: 30s
-    restart: no
+    restart: unless-stopped
     networks:
       - npl-network
     group_add:
@@ -91,6 +136,11 @@ services:
       <<: *airflow-common-depends-on
       airflow-init:
         condition: service_completed_successfully
+    environment:
+      <<: *airflow-common-env
+      # 추가 스케줄러 설정
+      AIRFLOW__SCHEDULER__MAX_THREADS: '4'
+      AIRFLOW__SCHEDULER__MIN_FILE_PROCESS_INTERVAL: '30'
 
   airflow-init:
     <<: *airflow-common
@@ -101,27 +151,34 @@ services:
       - -c
       - |
         mkdir -p /opt/airflow/dags /opt/airflow/logs /opt/airflow/plugins /opt/airflow/config
-        chmod -R g+w /opt/airflow/dags /opt/airflow/logs /opt/airflow/plugins
+        chmod -R g+w /opt/airflow/logs /opt/airflow/plugins
+        chmod -R g+r /opt/airflow/dags
         airflow db init && \
         airflow users create \
-          --username airflow \
+          --username ${AIRFLOW_ADMIN_USER:-airflow} \
           --firstname Admin \
           --lastname User \
           --role Admin \
-          --email keemgdeok@gmail.com \
-          --password airflow
+          --email ${AIRFLOW_ADMIN_EMAIL:-keemgdeok@gmail.com} \
+          --password ${AIRFLOW_ADMIN_PASSWORD:-airflow}
     networks:
       - npl-network
     environment:
       <<: *airflow-common-env
       _AIRFLOW_DB_UPGRADE: 'true'
       _AIRFLOW_WWW_USER_CREATE: 'true'
-      _AIRFLOW_WWW_USER_USERNAME: airflow
-      _AIRFLOW_WWW_USER_PASSWORD: airflow
+      _AIRFLOW_WWW_USER_USERNAME: ${AIRFLOW_ADMIN_USER:-airflow}
+      _AIRFLOW_WWW_USER_PASSWORD: ${AIRFLOW_ADMIN_PASSWORD:-airflow}
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
 
 networks:
   npl-network:
     external: true
+    name: ${DOCKER_NETWORK_NAME:-npl-network}
 
 volumes:
   postgres-db-volume: 

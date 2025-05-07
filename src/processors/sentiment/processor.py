@@ -2,12 +2,13 @@ from typing import Dict, Any, List
 from datetime import datetime, timedelta
 import json
 from kafka import KafkaConsumer, KafkaProducer
-from pymongo import MongoClient
 import os
 import logging  
 import time
 from .analyzer import SentimentAnalyzer
 from ...collectors.utils.config import Config
+from ...common.database.repositories.article_repository import SentimentArticleRepository
+from ...common.database.exceptions import OperationError
 
 logger = logging.getLogger("sentiment-processor")
 
@@ -15,6 +16,9 @@ class SentimentProcessor:
     def __init__(self, model_path: str = None):
         # KR-FinBert-SC 금융 도메인 특화 감성분석 모델 사용
         self.analyzer = SentimentAnalyzer(model_path=model_path)
+        
+        # Repository 초기화
+        self.repository = SentimentArticleRepository()
         
         # Kafka 설정 - 모든 카테고리의 processed 토픽 구독
         processed_topics = [f"{Config.KAFKA_TOPIC_PREFIX}.{category}.processed" 
@@ -42,166 +46,181 @@ class SentimentProcessor:
             retries=5,
             retry_backoff_ms=1000             # 1초 간격으로 재시도
         )
-        
-        # MongoDB 설정
-        self.mongo_client = MongoClient(Config.MONGODB_URI)
-        self.db = self.mongo_client[Config.DATABASE_NAME]
-        self.collection = self.db['sentiment_articles']
-        
-        # 인덱스 생성
-        self.collection.create_index([("url", 1)], unique=True)
-        self.collection.create_index([("category", 1), ("published_at", -1)])
-        self.collection.create_index([("sentiment_analysis.overall_sentiment.sentiment", 1)])
     
-    def process_article(self, article_data: Dict[str, Any]) -> Dict[str, Any]:
-        """기사의 감정 분석
+    def analyze_article(self, article_data: Dict[str, Any]) -> Dict[str, Any]:
+        """기사의 감성 분석
         
         Args:
-            article_data: 분석할 기사 데이터
+            article_data: 처리된 뉴스 기사 데이터
             
         Returns:
-            감정 분석 결과가 추가된 기사 데이터
+            Dict: 감성 분석 결과가 추가된 기사 데이터
         """
-        # 전체 내용에 대한 감정 분석
-        processed_content = article_data["processed_content"]
-        content_sentiment = self.analyzer.analyze(processed_content)
-        
-        # 이미 전처리된 키워드 사용 (없으면 빈 리스트)
-        tokens = article_data.get("keywords", [])
-        logger.info(f"키워드 수: {len(tokens)}")
-        
-        # 감정별 키워드 추출
-        sentiment_keywords = self.analyzer.get_sentiment_keywords(
-            processed_content,
-            tokens
-        )
-        
-        # 결과 데이터 생성
-        result = article_data.copy()
-        result.update({
-            "sentiment_analysis": {
-                "overall_sentiment": content_sentiment,
-                "sentiment_keywords": sentiment_keywords,
-                "model_info": {
-                    "name": "KR-FinBert-SC", 
-                    "type": "financial domain sentiment analysis"
-                }
-            },
-            "sentiment_processed_at": datetime.now().isoformat()
-        })
-        
-        return result
-    
-    def process_stream(self, idle_timeout_sec=None):
-        """Kafka 스트림 처리
-        
-        Args:
-            idle_timeout_sec: 이 시간(초) 동안 메시지가 없으면 자동 종료 (None이면 무한 대기)
-        """
-        import time
-        
-        last_message_time = time.time()
-        message_received = False
-        
         try:
-            logger.info("Kafka 스트림에서 뉴스 데이터 수신 대기중...")
+            # 처리된 내용으로 감성 분석
+            processed_content = article_data["processed_content"]
             
-            while True:  # 무한 루프로 변경하여 타임아웃 체크 가능하게 함
-                # poll을 사용하여 타임아웃 체크가 가능하도록 함
-                messages = self.consumer.poll(timeout_ms=1000)  # 1초마다 체크
-                
-                if messages:  # 메시지가 있으면 처리
-                    message_received = True
-                    last_message_time = time.time()
+            # 전체 내용에 대한 감성 분석
+            overall_sentiment = self.analyzer.analyze(processed_content)
+            
+            # 문단별 감성 분석 (내용을 문단으로 나누기)
+            paragraphs = processed_content.split("\n\n")
+            paragraph_sentiments = []
+            
+            for i, paragraph in enumerate(paragraphs):
+                # 빈 문단 건너뛰기
+                if not paragraph.strip():
+                    continue
                     
-                    # 모든 파티션의 메시지 처리
-                    for topic_partition, partition_messages in messages.items():
-                        for message in partition_messages:
-                            try:
-                                # 메시지에서 기사 데이터 파싱
-                                article_data = message.value
-                                category = message.topic.split('.')[1]
-                                
-                                logger.info(f"카테고리 '{category}'의 기사 처리 중: {article_data.get('title', '제목 없음')[:30]}...")
-                                
-                                # 카테고리 정보가 없으면 추가
-                                if 'category' not in article_data:
-                                    article_data['category'] = category
-                                
-                                # 감정 분석
-                                processed_data = self.process_article(article_data)
-                                
-                                # MongoDB에 저장
-                                self._save_to_mongodb(processed_data)
-                                
-                                # 처리된 데이터를 다음 단계로 전송
-                                self._send_to_kafka(processed_data, category)
-                                
-                                logger.info(f"기사 처리 완료: {processed_data.get('sentiment_analysis', {}).get('overall_sentiment', {}).get('sentiment', 'unknown')}")
-                                
-                            except Exception as e:
-                                logger.error(f"메시지 처리 오류: {str(e)}", exc_info=True)
-                                continue
-                
-                # 타임아웃 체크
-                if idle_timeout_sec and message_received and (time.time() - last_message_time) > idle_timeout_sec:
-                    logger.info(f"{idle_timeout_sec}초 동안 새 메시지가 없어 자동 종료합니다.")
-                    break
+                # 최소 20자 이상인 문단만 분석
+                if len(paragraph) < 20:
+                    continue
+                    
+                sentiment = self.analyzer.analyze(paragraph)
+                paragraph_sentiments.append({
+                    "paragraph_index": i,
+                    "text": paragraph[:100] + "..." if len(paragraph) > 100 else paragraph,
+                    "sentiment": sentiment
+                })
+            
+            # 감성 분석 결과 추가
+            article_data["sentiment_analysis"] = {
+                "overall_sentiment": overall_sentiment,
+                "paragraph_sentiments": paragraph_sentiments
+            }
+            
+            # 감성 분석 시간 추가
+            article_data["sentiment_processed_at"] = datetime.now().isoformat()
+            
+            return article_data
+            
+        except Exception as e:
+            logger.error(f"감성 분석 오류: {str(e)}")
+            # 에러 발생 시 최소한의 감성 분석 결과 추가
+            article_data["sentiment_analysis"] = {
+                "overall_sentiment": {"sentiment": "neutral", "score": 0.5, "confidence": 0.0},
+                "paragraph_sentiments": [],
+                "error": str(e)
+            }
+            article_data["sentiment_processed_at"] = datetime.now().isoformat()
+            return article_data
+    
+    def process_stream(self):
+        """Kafka 스트림 처리"""
+        try:
+            logger.info("메시지 처리 대기 중...")
+            for message in self.consumer:
+                try:
+                    # 메시지 카테고리 추출
+                    topic_parts = message.topic.split('.')
+                    category = topic_parts[1] if len(topic_parts) > 1 else "unknown"
+                    
+                    # 메시지에서 처리된 기사 데이터 파싱
+                    article_data = message.value
+                    logger.info(f"메시지 수신: {article_data.get('title', 'Unknown Title')} (토픽: {message.topic})")
+                    
+                    # 기사 감성 분석
+                    analyzed_data = self.analyze_article(article_data)
+                    logger.info(f"감성 분석 완료: {analyzed_data['title']} (감성: {analyzed_data['sentiment_analysis']['overall_sentiment']['sentiment']})")
+                    
+                    # MongoDB에 저장 - 저장소 패턴 사용 및 예외 처리 추가
+                    try:
+                        from ...common.database.models import SentimentArticleModel, model_to_doc, doc_to_model
+                        
+                        # 데이터 모델로 변환하여 유효성 검사
+                        sentiment_model = doc_to_model(analyzed_data, SentimentArticleModel)
+                        
+                        # 저장소에 저장
+                        self.repository.save_article(sentiment_model)
+                        logger.info(f"MongoDB 저장 완료: {analyzed_data['title']}")
+                    except OperationError as e:
+                        logger.error(f"MongoDB 저장 오류: {e.message}")
+                        if e.original_error:
+                            logger.debug(f"원본 오류: {str(e.original_error)}")
+                        # 저장 실패시에도 Kafka로 전송은 진행
+                    
+                    # 처리된 데이터를 다음 단계로 전송
+                    self._send_to_kafka(analyzed_data, category)
+                    logger.info(f"Kafka 전송 완료: {analyzed_data['title']} -> {category}.sentiment")
+                    
+                except Exception as e:
+                    logger.error(f"메시지 처리 중 오류 발생: {str(e)}")
+                    continue
                     
         except KeyboardInterrupt:
-            logger.info("사용자에 의해 처리가 중단되었습니다")
+            logger.info("사용자에 의해 처리가 중단되었습니다.")
         finally:
             self.close()
     
-    def process_batch(self, category: str = None, days: int = 1):
-        """MongoDB에서 데이터를 배치로 처리
+    def process_batch(self, category: str = None, days: int = 1, limit: int = 100):
+        """배치 처리
         
         Args:
-            category: 분석할 뉴스 카테고리
-            days: 처리할 기간(일)
+            category: 특정 카테고리만 처리 (선택적)
+            days: 최근 며칠 동안의 기사만 처리 (기본값: 1)
+            limit: 최대 처리 건수 (기본값: 100)
         """
+        from ...common.database.repositories.article_repository import ProcessedArticleRepository
+        from ...common.database.models import SentimentArticleModel, model_to_doc, doc_to_model
+        
+        processed_repo = ProcessedArticleRepository()
+        
+        # 쿼리 구성
         query = {}
         if category:
             query["category"] = category
             
         start_date = datetime.now() - timedelta(days=days)
-        query["published_at"] = {"$gte": start_date.isoformat()}
+        query["processed_at"] = {"$gte": start_date.isoformat()}
         
-        # 'processed_articles' 컬렉션에서 전처리된 기사 가져오기
-        articles = self.db['processed_articles'].find(query)
-        processed_count = 0
+        # 이미 감성 분석된 기사는 제외
+        query_with_join = [
+            {
+                "$lookup": {
+                    "from": "sentiment_articles",
+                    "localField": "url",
+                    "foreignField": "url",
+                    "as": "sentiment"
+                }
+            },
+            {"$match": {"sentiment": {"$size": 0}}},
+            {"$limit": limit}
+        ]
         
-        for article_data in articles:
-            try:
-                processed_data = self.process_article(article_data)
-                self._save_to_mongodb(processed_data)
-                category = article_data.get('category', 'economy')  # 기본값 설정
-                self._send_to_kafka(processed_data, category)
-                processed_count += 1
-                
-                if processed_count % 100 == 0:
-                    logger.info(f"현재까지 {processed_count}개 기사 처리 완료")
-                
-            except Exception as e:
-                logger.error(f"기사 처리 오류: {str(e)}")
-                continue
-        
-        logger.info(f"배치 처리 완료: 총 {processed_count}개 기사 처리됨")
-    
-    def _save_to_mongodb(self, data: Dict[str, Any]):
-        """처리된 데이터를 MongoDB에 저장
-        
-        Args:
-            data: 저장할 데이터
-        """
         try:
-            self.collection.update_one(
-                {"url": data["url"]},
-                {"$set": data},
-                upsert=True
-            )
-        except Exception as e:
-            logger.error(f"MongoDB 저장 오류: {str(e)}")
+            # 집계 파이프라인 실행
+            articles = processed_repo.aggregate(query_with_join)
+            
+            for article_data in articles:
+                try:
+                    # 감성 분석
+                    analyzed_data = self.analyze_article(article_data)
+                    
+                    try:
+                        # 모델로 변환하여 유효성 검사
+                        sentiment_model = doc_to_model(analyzed_data, SentimentArticleModel)
+                        
+                        # MongoDB에 저장 - 저장소 패턴 사용
+                        self.repository.save_article(sentiment_model)
+                        logger.info(f"MongoDB 저장 완료: {analyzed_data['title']}")
+                    except OperationError as e:
+                        logger.error(f"MongoDB 저장 오류: {e.message}")
+                        if e.original_error:
+                            logger.debug(f"원본 오류: {str(e.original_error)}")
+                        # 저장 실패시에도 Kafka로 전송은 진행
+                    
+                    # Kafka로 전송
+                    self._send_to_kafka(analyzed_data, article_data["category"])
+                    
+                    logger.info(f"배치 처리 완료: {analyzed_data['title']}")
+                except Exception as e:
+                    logger.error(f"기사 처리 오류: {str(e)}")
+                    continue
+        except OperationError as e:
+            logger.error(f"기사 조회 오류: {e.message}")
+            if e.original_error:
+                logger.debug(f"원본 오류: {str(e.original_error)}")
+            return
     
     def _send_to_kafka(self, data: Dict[str, Any], category: str):
         """처리된 데이터를 Kafka로 전송
@@ -222,5 +241,4 @@ class SentimentProcessor:
         """리소스 정리"""
         self.consumer.close()
         self.producer.close()
-        self.mongo_client.close()
         logger.info("모든 리소스가 정리되었습니다.") 

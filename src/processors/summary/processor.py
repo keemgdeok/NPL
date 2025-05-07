@@ -8,6 +8,7 @@ import logging
 import time
 from .summarizer import TextSummarizer
 from ...collectors.utils.config import Config
+from ...common.database.exceptions import OperationError
 
 logger = logging.getLogger("summary-processor")
 
@@ -200,11 +201,16 @@ class SummaryProcessor:
             data: 저장할 데이터
         """
         try:
+            # MongoDB에 저장 - 저장소 패턴 대신 직접 컬렉션 접근 방식 사용
             self.collection.update_one(
                 {"url": data["url"]},
                 {"$set": data},
                 upsert=True
             )
+        except OperationError as e:
+            logger.error(f"MongoDB 저장 오류 (OperationError): {e.message}")
+            if e.original_error:
+                logger.debug(f"원본 오류: {str(e.original_error)}")
         except Exception as e:
             logger.error(f"MongoDB 저장 오류: {str(e)}")
     

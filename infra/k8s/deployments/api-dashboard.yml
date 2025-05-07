@@ -1,0 +1,121 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: api-server
+  namespace: news-platform
+  labels:
+    app: news-processing
+    component: api
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: news-processing
+      component: api
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 1
+  template:
+    metadata:
+      labels:
+        app: news-processing
+        component: api
+      annotations:
+        prometheus.io/scrape: "true"
+        prometheus.io/path: "/metrics"
+        prometheus.io/port: "8000"
+    spec:
+      containers:
+      - name: api
+        image: news-api:latest  # 실제 환경에서는 특정 버전 태그 사용 권장
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8000
+          name: http
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        env:
+        - name: MONGODB_URI
+          value: "mongodb://mongodb-svc.news-platform.svc.cluster.local:27017"
+        - name: DATABASE_NAME
+          value: "news_db"
+        - name: API_HOST
+          value: "0.0.0.0"
+        - name: API_PORT
+          value: "8000"
+        - name: API_LOG_LEVEL
+          value: "INFO"
+        livenessProbe:
+          httpGet:
+            path: /health
+            port: 8000
+          initialDelaySeconds: 30
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /ready
+            port: 8000
+          initialDelaySeconds: 15
+          periodSeconds: 10
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dashboard
+  namespace: news-platform
+  labels:
+    app: news-processing
+    component: dashboard
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: news-processing
+      component: dashboard
+  strategy:
+    type: RollingUpdate
+    rollingUpdate:
+      maxSurge: 1
+      maxUnavailable: 0
+  template:
+    metadata:
+      labels:
+        app: news-processing
+        component: dashboard
+    spec:
+      containers:
+      - name: dashboard
+        image: news-dashboard:latest  # 실제 환경에서는 특정 버전 태그 사용 권장
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8501
+          name: http
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "500m"
+        env:
+        - name: API_URL
+          value: "http://api-svc.news-platform.svc.cluster.local:8000"
+        livenessProbe:
+          httpGet:
+            path: /
+            port: 8501
+          initialDelaySeconds: 30
+          periodSeconds: 20
+        readinessProbe:
+          httpGet:
+            path: /
+            port: 8501
+          initialDelaySeconds: 15
+          periodSeconds: 10 

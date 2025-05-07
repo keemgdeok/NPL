@@ -1,0 +1,86 @@
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mongodb-data-pvc
+  namespace: news-platform
+  labels:
+    app: mongodb
+spec:
+  accessModes:
+    - ReadWriteOnce
+  storageClassName: standard
+  resources:
+    requests:
+      storage: 30Gi
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mongodb
+  namespace: news-platform
+  labels:
+    app: mongodb
+spec:
+  serviceName: "mongodb-svc"
+  replicas: 1  # 프로덕션 환경에서는 복제본 설정 권장
+  selector:
+    matchLabels:
+      app: mongodb
+  template:
+    metadata:
+      labels:
+        app: mongodb
+    spec:
+      containers:
+      - name: mongodb
+        image: mongo:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 27017
+          name: mongodb
+        volumeMounts:
+        - name: mongodb-data
+          mountPath: /data/db
+        resources:
+          requests:
+            memory: "1Gi"
+            cpu: "500m"
+          limits:
+            memory: "2Gi"
+            cpu: "1"
+        livenessProbe:
+          exec:
+            command:
+            - mongo
+            - --eval
+            - "db.adminCommand('ping')"
+          initialDelaySeconds: 30
+          periodSeconds: 10
+        readinessProbe:
+          exec:
+            command:
+            - mongo
+            - --eval
+            - "db.adminCommand('ping')"
+          initialDelaySeconds: 10
+          periodSeconds: 5
+      volumes:
+      - name: mongodb-data
+        persistentVolumeClaim:
+          claimName: mongodb-data-pvc
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongodb-svc
+  namespace: news-platform
+  labels:
+    app: mongodb
+spec:
+  ports:
+  - port: 27017
+    targetPort: 27017
+    protocol: TCP
+    name: mongodb
+  selector:
+    app: mongodb 

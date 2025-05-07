@@ -1,0 +1,66 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: collector-config
+  namespace: news-platform
+  labels:
+    app: news-processing
+    component: collector
+data:
+  collector-settings.json: |
+    {
+      "sources": [
+        {
+          "name": "Reuters",
+          "url": "https://www.reuters.com/business",
+          "category": "business",
+          "max_articles": 100,
+          "update_interval": 3600
+        },
+        {
+          "name": "Bloomberg",
+          "url": "https://www.bloomberg.com/markets",
+          "category": "economy",
+          "max_articles": 100,
+          "update_interval": 3600
+        },
+        {
+          "name": "CNN",
+          "url": "https://edition.cnn.com/business",
+          "category": "business",
+          "max_articles": 50,
+          "update_interval": 7200
+        },
+        {
+          "name": "BBC",
+          "url": "https://www.bbc.com/news/business",
+          "category": "economy",
+          "max_articles": 50,
+          "update_interval": 7200
+        },
+        {
+          "name": "The Guardian",
+          "url": "https://www.theguardian.com/uk/society",
+          "category": "society",
+          "max_articles": 50,
+          "update_interval": 7200
+        }
+      ],
+      "kafka": {
+        "topics": {
+          "economy": "news.economy.raw",
+          "business": "news.business.raw",
+          "society": "news.society.raw"
+        },
+        "batch_size": 10,
+        "retry_count": 3,
+        "retry_interval": 5
+      },
+      "crawler": {
+        "user_agent": "Mozilla/5.0 (compatible; NewsCollector/1.0; +http://news-platform.example.com)",
+        "request_timeout": 30,
+        "max_retries": 3,
+        "backoff_factor": 1.5,
+        "concurrency": 5
+      }
+    } 

@@ -1,0 +1,96 @@
+apiVersion: v1
+kind: Pod
+metadata:
+  name: airflow-worker-pod-template
+  namespace: news-platform
+  labels:
+    app: airflow
+    component: worker
+  annotations:
+    prometheus.io/scrape: "true"
+    prometheus.io/port: "8080"
+    prometheus.io/path: "/metrics"
+spec:
+  restartPolicy: Never
+  securityContext:
+    runAsUser: 50000
+    fsGroup: 0
+  serviceAccountName: airflow
+  containers:
+    - name: airflow-worker
+      image: apache/airflow:2.10.5-python3.11
+      securityContext:
+        allowPrivilegeEscalation: false
+        capabilities:
+          drop: ["ALL"]
+      resources:
+        requests:
+          cpu: "1"
+          memory: "2Gi"
+        limits:
+          cpu: "2"
+          memory: "4Gi"
+      env:
+        - name: AIRFLOW__CORE__EXECUTOR
+          value: "LocalExecutor"
+        - name: AIRFLOW__LOGGING__LOGGING_LEVEL
+          value: "INFO"
+      volumeMounts:
+        - name: airflow-logs
+          mountPath: /opt/airflow/logs
+        - name: dags-volume
+          mountPath: /opt/airflow/dags
+          readOnly: true
+        - name: config-volume
+          mountPath: /opt/airflow/config
+          readOnly: true
+        - name: tmp-volume
+          mountPath: /tmp
+      # Docker-in-Docker 설정을 위한 설정 (DockerOperator 사용 시)
+      env:
+        - name: DOCKER_HOST
+          value: "tcp://dind-service:2375"
+  volumes:
+    - name: airflow-dags
+      persistentVolumeClaim:
+        claimName: airflow-pvc
+    - name: airflow-logs
+      persistentVolumeClaim:
+        claimName: airflow-logs-pvc
+    - name: config-volume
+      persistentVolumeClaim:
+        claimName: airflow-config-pvc
+    - name: tmp-volume
+      emptyDir: {}
+  # 노드 선택기 - 특정 노드 그룹에 배치
+  nodeSelector:
+    workload-type: airflow
+  # 친화성 설정
+  affinity:
+    nodeAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          preference:
+            matchExpressions:
+              - key: node-type
+                operator: In
+                values:
+                  - compute-optimized
+    # Pod 분산 배치
+    podAntiAffinity:
+      preferredDuringSchedulingIgnoredDuringExecution:
+        - weight: 100
+          podAffinityTerm:
+            labelSelector:
+              matchExpressions:
+                - key: component
+                  operator: In
+                  values:
+                    - worker
+            topologyKey: "kubernetes.io/hostname"
+  # 허용 오차 - 특정 테인트가 있는 노드에도 배치 가능
+  tolerations:
+    - key: "dedicated"
+      operator: "Equal"
+      value: "airflow"
+      effect: "NoSchedule" 
