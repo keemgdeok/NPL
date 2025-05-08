@@ -32,11 +32,11 @@ x-airflow-common:
     AIRFLOW__LOGGING__BASE_LOG_FOLDER: '/opt/airflow/logs'
     AIRFLOW__LOGGING__DAG_PROCESSOR_MANAGER_LOG_LOCATION: '/opt/airflow/logs/dag_processor_manager/dag_processor_manager.log'
   volumes:
-    - ./airflow/dags:/opt/airflow/dags:ro
-    - ./airflow/logs:/opt/airflow/logs
-    - ./airflow/plugins:/opt/airflow/plugins
-    - ./airflow/config:/opt/airflow/config
-    - ./airflow/models:/opt/airflow/dags/project/models:ro
+    - ./dags:/opt/airflow/dags:ro
+    - ./logs:/opt/airflow/logs
+    - ./plugins:/opt/airflow/plugins
+    - ./config:/opt/airflow/config
+    - ./models:/opt/airflow/dags/project/models:ro
     - /var/run/docker.sock:/var/run/docker.sock
   user: "${AIRFLOW_UID:-50000}:0"
   group_add:

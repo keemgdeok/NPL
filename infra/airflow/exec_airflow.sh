@@ -13,8 +13,8 @@ echo "===================================="
 # 필요한 디렉토리 확인 및 생성
 echo -e "${YELLOW}필요한 디렉토리 확인 중...${NC}"
 
-# 각 디렉토리 존재 여부 확인 후 필요시에만 생성
-for dir in "./airflow/dags" "./airflow/logs" "./airflow/plugins" "./airflow/config/variables" "./airflow/models"; do
+# 각 디렉토리 존재 여부 확인 후 필요시에만 생성 (경로 수정)
+for dir in "./dags" "./logs" "./plugins" "./config/variables" "./models"; do
   if [ ! -d "$dir" ]; then
     echo "디렉토리 생성: $dir"
     mkdir -p "$dir"
@@ -23,34 +23,34 @@ for dir in "./airflow/dags" "./airflow/logs" "./airflow/plugins" "./airflow/conf
   fi
 done
 
-# DAG 파일 복사 (이미 존재하는 경우 스킵)
+# DAG 파일 복사 (이미 존재하는 경우 스킵) (경로 수정)
 echo -e "${YELLOW}DAG 파일 복사 중...${NC}"
 if [[ -f ./news_pipeline_dag.py ]]; then
-  if [[ -f ./airflow/dags/news_pipeline_dag.py ]]; then
-    echo "news_pipeline_dag.py 파일이 이미 존재합니다. 복사하지 않습니다."
+  if [[ -f ./dags/news_pipeline_dag.py ]]; then
+    echo "news_pipeline_dag.py 파일이 이미 ./dags/에 존재합니다. 복사하지 않습니다."
   else
-    cp ./news_pipeline_dag.py ./airflow/dags/
-    echo "news_pipeline_dag.py 파일을 복사했습니다."
+    cp ./news_pipeline_dag.py ./dags/
+    echo "news_pipeline_dag.py 파일을 ./dags/로 복사했습니다."
   fi
 fi
 
 if [[ -f ./news_monitoring_dag.py ]]; then
-  if [[ -f ./airflow/dags/news_monitoring_dag.py ]]; then
-    echo "news_monitoring_dag.py 파일이 이미 존재합니다. 복사하지 않습니다."
+  if [[ -f ./dags/news_monitoring_dag.py ]]; then
+    echo "news_monitoring_dag.py 파일이 이미 ./dags/에 존재합니다. 복사하지 않습니다."
   else
-    cp ./news_monitoring_dag.py ./airflow/dags/
-    echo "news_monitoring_dag.py 파일을 복사했습니다."
+    cp ./news_monitoring_dag.py ./dags/
+    echo "news_monitoring_dag.py 파일을 ./dags/로 복사했습니다."
   fi
 fi
 
-# 변수 파일 복사 (이미 존재하는 경우 스킵)
+# 변수 파일 복사 (이미 존재하는 경우 스킵) (경로 수정)
 echo -e "${YELLOW}변수 파일 복사 중...${NC}"
 if [[ -f ./airflow_variables.json ]]; then
-  if [[ -f ./airflow/config/variables/airflow_variables.json ]]; then
-    echo "airflow_variables.json 파일이 이미 존재합니다. 복사하지 않습니다."
+  if [[ -f ./config/variables/airflow_variables.json ]]; then
+    echo "airflow_variables.json 파일이 이미 ./config/variables/에 존재합니다. 복사하지 않습니다."
   else
-    cp ./airflow_variables.json ./airflow/config/variables/
-    echo "airflow_variables.json 파일을 복사했습니다."
+    cp ./airflow_variables.json ./config/variables/
+    echo "airflow_variables.json 파일을 ./config/variables/로 복사했습니다."
   fi
 fi
 
@@ -97,15 +97,16 @@ if [[ "$answer" == "y" ]] || [[ "$answer" == "Y" ]]; then
   echo -e "${YELLOW}Airflow 서비스 시작 중...${NC}"
   docker compose -f docker-compose-airflow.yml up -d
   echo -e "${GREEN}Airflow 서비스가 시작되었습니다!${NC}"
-  echo "웹 UI: http://localhost:8080 (사용자명: airflow, 비밀번호: airflow)"
+  echo "웹 UI: http://localhost:8081 (사용자명: airflow, 비밀번호: airflow)" # 포트 번호 8080 -> 8081 일관성 유지
   
   # 서비스가 완전히 시작될 때까지 대기
   echo -e "${YELLOW}서비스 시작 대기 중... (15초)${NC}"
   sleep 15
   
-  # 변수 자동 업로드
+  # 변수 자동 업로드 (호스트 경로 수정, 컨테이너 내 경로는 유지)
   echo -e "${YELLOW}Airflow 변수 자동 업로드 중...${NC}"
-  if [[ -f ./airflow/config/variables/airflow_variables.json ]]; then
+  if [[ -f ./config/variables/airflow_variables.json ]]; then # 호스트 경로 수정
+    # 컨테이너 내부 경로는 /opt/airflow/config/variables/airflow_variables.json 이므로 그대로 둠
     if docker exec -i npl-airflow-webserver airflow variables import /opt/airflow/config/variables/airflow_variables.json; then
       echo -e "${GREEN}변수가 성공적으로 업로드되었습니다!${NC}"
     else
@@ -113,7 +114,7 @@ if [[ "$answer" == "y" ]] || [[ "$answer" == "Y" ]]; then
       echo "Admin > Variables > Import Variables 메뉴에서 airflow_variables.json 파일을 가져오세요."
     fi
   else
-    echo -e "${RED}변수 파일을 찾을 수 없습니다.${NC}"
+    echo -e "${RED}변수 파일을 찾을 수 없습니다. (경로: ./config/variables/airflow_variables.json)"
   fi
   
   # 로그 확인 방법 안내
