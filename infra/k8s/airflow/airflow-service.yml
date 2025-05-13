@@ -11,12 +11,12 @@ metadata:
     prometheus.io/port: "8081"
     prometheus.io/path: "/metrics"
 spec:
-  type: ClusterIP
+  type: LoadBalancer
   ports:
-  - port: 8081
+  - port: 80
     targetPort: 8081
     protocol: TCP
-    name: web
+    name: http
   selector:
     app: airflow
     component: webserver

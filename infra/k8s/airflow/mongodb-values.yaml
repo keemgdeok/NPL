@@ -1,0 +1,36 @@
+# infra/k8s/airflow/mongodb-values.yaml (새 파일)
+auth:
+  rootUser: mongoadmin
+  rootPassword: "mongoadmin" # 예: "Mong0Adm1nPasswOrd!"
+  usernames:
+    - airflow # Airflow가 사용할 사용자 이름
+  passwords:
+    - "mongoadmin" # 예: "A1rfl0wMongOP@ss!"
+  databases:
+    - news_db # Airflow가 사용할 데이터베이스 이름 (values-docker-desktop.yaml의 airflow_dags_database_name과 일치)
+  # replicaSet.enabled=true (기본값)를 사용하면 아래 설정이 자동으로 적용될 수 있습니다.
+  # replicaSetKey: YOUR_REPLICA_SET_KEY # 복제셋을 사용한다면 강력한 키로 설정 (자동 생성될 수도 있음)
+
+architecture: standalone # 개발/테스트용으로 간단하게 standalone으로 시작. 필요시 "replicaset"으로 변경 가능
+
+persistence:
+  enabled: true
+  size: 8Gi
+  # storageClass: "" # Docker Desktop 기본값 사용 시 비워둠 또는 주석 처리
+
+# Docker Desktop 환경에서는 리소스 요청/제한을 낮춰야 할 수 있습니다.
+# resources:
+#   requests:
+#     memory: "256Mi"
+#     cpu: "100m"
+#   limits:
+#     memory: "512Mi"
+#     cpu: "250m"
+
+# Pod Security Context (Bitnami 차트의 기본값을 따르거나 필요시 조정)
+# podSecurityContext:
+#   enabled: true
+#   fsGroup: 1001
+# containerSecurityContext:
+#   enabled: true
+#   runAsUser: 1001 

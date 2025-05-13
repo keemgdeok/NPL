@@ -1,0 +1,14 @@
+# infra/k8s/airflow/airflow-models-pvc.yaml (새 파일)
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: airflow-models-pvc # values-docker-desktop.yaml의 airflow_dags_model_pvc_name과 일치
+  namespace: pipeline-platform # Airflow 배포 네임스페이스와 일치
+spec:
+  accessModes:
+    - ReadWriteOnce # 단일 노드에서 읽고 쓰기 (KubernetesPodOperator가 모델 다운로드/사용 시 적합)
+  resources:
+    requests:
+      storage: 5Gi # 필요한 스토리지 크기 (예: 5GB)
+  # storageClassName: "" # Docker Desktop의 경우 기본 StorageClass 사용 (보통 "hostpath" 또는 유사 이름)
+                          # 특정 StorageClass를 사용하려면 주석 해제 후 이름 지정 

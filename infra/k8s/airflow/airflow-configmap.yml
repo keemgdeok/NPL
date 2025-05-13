@@ -6,44 +6,58 @@ metadata:
   labels:
     app: airflow
 data:
+  # Core Airflow Settings
   AIRFLOW__CORE__EXECUTOR: "KubernetesExecutor"
-  AIRFLOW__CORE__SQL_ALCHEMY_CONN: "postgresql+psycopg2://airflow:airflow@airflow-postgres:5432/airflow"
-  AIRFLOW__CORE__FERNET_KEY: ""  # 실제 배포 시 생성해서 채워넣어야 함
+  # SQL Alchemy Connection - Constructed from Secret values in the Pod environment
+  # The actual connection string will be set as an environment variable in Airflow pods
+  # using values from airflow-postgres-secret.
+  # Example (this will be set on the pod spec):
+  # AIRFLOW__CORE__SQL_ALCHEMY_CONN: "postgresql+psycopg2://$(AIRFLOW_DB_USER):$(AIRFLOW_DB_PASSWORD)@airflow-postgres:5432/$(AIRFLOW_DB_NAME)"
+
   AIRFLOW__CORE__DAGS_ARE_PAUSED_AT_CREATION: "true"
   AIRFLOW__CORE__LOAD_EXAMPLES: "false"
   AIRFLOW__CORE__DEFAULT_TIMEZONE: "Asia/Seoul"
   
-  # Kubernetes Executor 설정
+  # Kubernetes Executor Settings
   AIRFLOW__KUBERNETES__NAMESPACE: "news-platform"
-  AIRFLOW__KUBERNETES__WORKER_CONTAINER_REPOSITORY: "apache/airflow"
-  AIRFLOW__KUBERNETES__WORKER_CONTAINER_TAG: "2.10.5-python3.11"
+  AIRFLOW__KUBERNETES__WORKER_CONTAINER_REPOSITORY: "apache/airflow" # Ensure this matches your Airflow image
+  AIRFLOW__KUBERNETES__WORKER_CONTAINER_TAG: "2.10.5-python3.11" # Ensure this matches your Airflow image version
   AIRFLOW__KUBERNETES__DELETE_WORKER_PODS: "true"
-  AIRFLOW__KUBERNETES__WORKER_SERVICE_ACCOUNT_NAME: "airflow"
-  AIRFLOW__KUBERNETES__RUN_AS_USER: "50000"
-  AIRFLOW__KUBERNETES__POD_TEMPLATE_FILE: "/opt/airflow/config/pod_template.yaml"
+  AIRFLOW__KUBERNETES__WORKER_SERVICE_ACCOUNT_NAME: "airflow-worker" # Dedicated SA for worker pods (will be created)
+  AIRFLOW__KUBERNETES__RUN_AS_USER: "50000" # UID for worker pods, ensure your image supports this
+  # pod_template.yaml will be mounted from a ConfigMap into the scheduler pod
+  AIRFLOW__KUBERNETES__POD_TEMPLATE_FILE: "/opt/airflow/pod_templates/pod_template.yaml"
   AIRFLOW__KUBERNETES__WORKER_PODS_CREATION_BATCH_SIZE: "16"
   AIRFLOW__KUBERNETES__MULTI_NAMESPACE_MODE: "false"
   AIRFLOW__KUBERNETES__KUBE_CLIENT_REQUEST_ARGS: '{"_request_timeout": [60, 60]}'
+  # If using Git-Sync for DAGs, Airflow needs to know where they are mounted in the scheduler/webserver
+  AIRFLOW__CORE__DAGS_FOLDER: "/opt/airflow/dags" # Standard path, ensure Git-Sync target matches
   
-  # 성능 및 확장성 설정
+  # Performance and Scalability Settings
   AIRFLOW__SCHEDULER__MAX_THREADS: "4"
-  AIRFLOW__CELERY__WORKER_CONCURRENCY: "16"
+  # AIRFLOW__CELERY__WORKER_CONCURRENCY: "16" # Not applicable for KubernetesExecutor
   AIRFLOW__SCHEDULER__MIN_FILE_PROCESS_INTERVAL: "60"
-  AIRFLOW__SCHEDULER__PARSING_PROCESSES: "4"
-  AIRFLOW__WEBSERVER__WORKERS: "4"
+  AIRFLOW__SCHEDULER__PARSING_PROCESSES: "4"       # Number of processes to parse DAGs
+  AIRFLOW__WEBSERVER__WORKERS: "4"                 # Gunicorn workers for the webserver
   
-  # 로깅 및 모니터링
+  # Logging Settings (Remote logging to S3 is configured)
   AIRFLOW__LOGGING__REMOTE_LOGGING: "true"
-  AIRFLOW__LOGGING__REMOTE_BASE_LOG_FOLDER: "s3://airflow-logs-bucket/logs"
+  AIRFLOW__LOGGING__REMOTE_BASE_LOG_FOLDER: "s3://your-airflow-logs-bucket/logs" # <<< REPLACE with your S3 bucket and prefix
+  # Ensure worker pods have IAM permissions to write to this S3 bucket
+  AIRFLOW__LOGGING__REMOTE_LOG_CONN_ID: "aws_s3_default" # Optional: if you define an S3 connection in Airflow UI
   
-  # 웹서버 설정
-  AIRFLOW__WEBSERVER__SECRET_KEY: "news-pipeline-key"  # 실제 배포 시 변경해야 함
+  # Webserver Settings
+  # AIRFLOW__WEBSERVER__SECRET_KEY is now sourced from Secret
   AIRFLOW__WEBSERVER__EXPOSE_CONFIG: "false"
   AIRFLOW__WEBSERVER__WEB_SERVER_PORT: "8081"
   AIRFLOW__WEBSERVER__ENABLE_PROXY_FIX: "true"
   
-  # 캐싱 및 성능 최적화
+  # Caching and Performance Optimization
   AIRFLOW__SCHEDULER__USE_JOB_SCHEDULE: "true"
   AIRFLOW__CORE__STORE_SERIALIZED_DAGS: "true"
   AIRFLOW__CORE__STORE_DAG_CODE: "true"
   AIRFLOW__CORE__MIN_SERIALIZED_DAG_UPDATE_INTERVAL: "30" 
+
+  # Default S3 connection for remote logging (if not using instance profile/IRSA directly)
+  # This is an example, actual credentials should be in a Secret and mounted if this method is used.
+  # AIRFLOW_CONN_AWS_S3_DEFAULT: '{"conn_type": "aws", "aws_access_key_id": "YOUR_ACCESS_KEY", "aws_secret_access_key": "YOUR_SECRET_KEY", "region_name": "YOUR_REGION"}' 

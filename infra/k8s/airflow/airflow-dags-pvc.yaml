@@ -1,0 +1,16 @@
+# airflow-dags-pvc.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: airflow-dags-pvc
+  namespace: pipeline-platform # 네임스페이스 확인
+spec:
+  accessModes:
+    # ReadWriteMany는 여러 Pod가 동시에 읽고 쓸 수 있게 합니다.
+    # hostpath storageClass는 보통 ReadWriteOnce만 지원할 수 있으므로,
+    # 에러 발생 시 ReadWriteOnce로 변경해야 할 수도 있습니다.
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 1Gi # DAG 파일 크기에 맞춰 조절 가능
+  storageClassName: hostpath # Docker Desktop의 기본 hostpath 스토리지

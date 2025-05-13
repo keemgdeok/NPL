@@ -1,0 +1,190 @@
+---
+description: airflow_dags
+globs: infra/airflow/*
+alwaysApply: false
+---
+Description: Airflow DAG 작성 규칙
+Globs: .py, .json, .sh
+
+
+# Airflow on Kubernetes (KubernetesExecutor) 설정 가이드
+
+## 1. 목표
+
+이 문서는 기존 Docker Compose 기반의 Airflow 설정(`infra/airflow`)을 활용하여, Kubernetes 환경에서 `KubernetesExecutor`를 사용해 Airflow를 배포하고 운영하기 위한 설정 규칙과 가이드라인을 제공합니다.
+
+## 2. 전제 조건
+
+*   동작 중인 Kubernetes 클러스터 접근 권한
+*   `kubectl` CLI 설치 및 클러스터 연결 설정 완료
+*   Docker 설치 (Worker 이미지 빌드용)
+*   컨테이너 레지스트리 (예: Docker Hub, ECR, GCR, Harbor 등) 접근 및 이미지 푸시 권한
+
+## 3. 핵심 개념: Docker Compose vs Kubernetes
+
+| 항목                 | Docker Compose (`infra/airflow`)                 | Kubernetes (`infra/k8s/airflow`)                     | 주요 고려사항                                                                                                |
+| :------------------- | :----------------------------------------------- | :------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------- |
+| **Executor**         | `LocalExecutor` (또는 `SequentialExecutor`)      | `KubernetesExecutor`                                     | **가장 큰 차이점.** K8s Executor는 태스크마다 별도 Pod 생성.                                                    |
+| **Airflow 설정**     | `docker-compose-airflow.yml` 내 환경 변수        | `airflow-configmap.yml` (ConfigMap), 환경 변수 주입      | 설정 값의 일관성 유지 중요 (Executor 등 환경 의존적 설정 제외).                                              |
+| **Secrets**          | 환경 변수, `.env` 파일                           | Kubernetes `Secret` (`postgres-secret.yaml` 등)        | K8s Secret으로 민감 정보 관리 및 Pod에 마운트/주입.                                                        |
+| **DAGs/Plugins/코드** | 로컬 디렉토리 Volume Mount                       | Git-Sync, Worker 이미지 내 포함, Persistent Volume (PVC) | Worker Pod에서 코드 접근 방식 결정 필요.                                                                       |
+| **로그**             | 로컬 디렉토리 Volume Mount                       | Pod 로그, Persistent Volume (PVC), 외부 로깅 시스템      | 로그 영속화 및 중앙 관리 방안 필요.                                                                          |
+| **데이터베이스**     | Docker Compose 내 Postgres 서비스                | K8s Deployment/StatefulSet (`postgres-deployment.yaml`) | K8s 환경에 맞는 DB 배포 및 관리.                                                                               |
+| **Worker 환경**      | Airflow 컨테이너 이미지 (Webserver/Scheduler 동일) | 별도의 Worker Docker 이미지, Pod Template              | **Worker 이미지 생성/관리 필수.** (`airflow-pod-template-configmap.yaml`에서 Worker Pod 기본 형태 정의) |
+| **네트워킹**       | Docker 네트워크                                  | Kubernetes Service (`airflow-service.yml`), Ingress      | K8s 환경에 맞는 서비스 노출 및 접근 제어.                                                                    |
+| **권한 (RBAC)**      | 해당 없음                                        | Kubernetes RBAC (`airflow-rbac.yaml`)                  | Airflow가 K8s API(Pod 생성/관리 등)에 접근하기 위한 권한 설정 필수.                                           |
+
+## 4. 설정 규칙 및 절차
+
+### 4.1. Worker Docker 이미지 정의 및 관리
+
+*   **Dockerfile 생성:**
+    *   K8s Worker Pod에서 사용할 Docker 이미지를 위한 `Dockerfile`을 작성합니다. (예: `infra/k8s/airflow/Dockerfile.worker`)
+    *   **Base Image:** 안정적인 공식 Airflow 이미지 버전을 사용합니다. (`apache/airflow:2.10.5-python3.11` 등)
+    *   **Python 의존성:** DAG 및 Plugin 실행에 필요한 모든 Python 라이브러리를 `requirements.txt` (또는 `pyproject.toml`)에 정의하고, Dockerfile 내에서 `pip install` 등으로 설치합니다. (`infra/airflow/test_requirements.txt`와는 별개일 수 있음)
+    *   **시스템 의존성:** 필요한 시스템 패키지 (예: `build-essential`, `git`)를 `apt-get` 등으로 설치합니다.
+    *   **코드 포함 (선택적):** Git-Sync를 사용하지 않을 경우, `COPY dags /opt/airflow/dags`, `COPY plugins /opt/airflow/plugins` 와 같이 관련 코드를 이미지에 포함시킬 수 있습니다. (이 경우 코드 변경 시 이미지 재빌드 필요)
+    *   **권한:** Airflow 사용자(UID/GID)에 맞게 파일 권한을 설정합니다.
+*   **이미지 빌드 및 푸시:**
+    *   작성된 Dockerfile을 사용하여 이미지를 빌드합니다. (`docker build -t <your_registry>/<image_name>:<tag> .`)
+    *   빌드된 이미지를 접근 가능한 컨테이너 레지스트리에 푸시합니다. (`docker push <your_registry>/<image_name>:<tag>`)
+
+### 4.2. Kubernetes Namespace 생성 (권장)
+
+*   Airflow 관련 리소스를 논리적으로 분리하기 위해 별도의 Namespace (예: `airflow`)를 생성하고 사용합니다.
+    ```bash
+    kubectl create namespace airflow
+    ```
+
+### 4.3. Secrets 관리 (`postgres-secret.yaml` 등)
+
+*   **필수 Secrets:**
+    *   PostgreSQL 비밀번호 (`postgres-secret.yaml`에 정의됨)
+    *   Airflow Fernet Key (`airflow-fernet-key-secret.yaml` 등 별도 파일로 생성 권장)
+    *   Airflow Webserver Secret Key (`airflow-webserver-secret-key-secret.yaml` 등 별도 파일로 생성 권장)
+    *   (선택적) 외부 서비스 연동에 필요한 API 키, 비밀번호 등
+*   **생성 및 적용:**
+    *   각 Secret에 대한 YAML 파일을 작성하고 `kubectl apply -f <secret_file.yaml> -n airflow` 명령으로 생성합니다.
+    *   **주의:** Secret 값은 Base64 인코딩되어 저장됩니다.
+
+### 4.4. Airflow ConfigMap 설정 (`airflow-configmap.yml`)
+
+*   **기존 설정 참고:** `infra/airflow/docker-compose-airflow.yml`의 `environment:` 섹션 내용을 참고하여 `airflow-configmap.yml` 내 `airflow.cfg` 또는 `data:` 필드를 구성합니다.
+*   **Executor 설정 (필수 변경):**
+    *   `[core]` 섹션의 `executor`를 `KubernetesExecutor`로 변경합니다.
+    *   ```ini
+        [core]
+        executor = KubernetesExecutor
+        ```
+*   **Kubernetes 섹션 설정 (필수 추가/수정):**
+    *   `[kubernetes]` 섹션을 추가하고 관련 설정을 정의합니다.
+    *   ```ini
+        [kubernetes]
+        # Airflow가 동작하는 K8s Namespace
+        namespace = airflow
+        # Worker Pod에서 사용할 Docker 이미지 (4.1에서 빌드/푸시한 이미지)
+        worker_container_repository = <your_registry>/<image_name>
+        worker_container_tag = <tag>
+        # DAG/Plugin 코드 동기화 방식에 따른 설정 (아래 4.7 참고)
+        # 예: Git-Sync 사용 시 관련 설정 또는 dags_in_image = True 등
+        # 워커 Pod 기본 템플릿 파일 경로 (컨테이너 내부 경로, 보통 기본값 유지)
+        # pod_template_file = /path/to/pod_template.yaml 
+        # K8s Secret으로 Fernet 키 제공 시
+        # fernet_key_secret_name = airflow-fernet-key-secret
+        # fernet_key_secret_key = fernet-key
+        # 워커 Pod 생성을 위한 서비스 어카운트 이름
+        # worker_service_account_name = airflow-worker
+        # 기타 필요한 [kubernetes] 섹션 설정 추가...
+        ```
+*   **기타 설정 일관성:** `default_timezone`, `parallelism`, `dag_concurrency` 등 환경에 의존적이지 않은 설정들은 Docker Compose 환경과 일관성을 유지하도록 합니다.
+*   **적용:** `kubectl apply -f infra/k8s/airflow/airflow-configmap.yml -n airflow`
+
+### 4.5. Persistent Volume 설정 (선택적, 로그/데이터 영속화 시)
+
+*   **로그:** Airflow 로그를 영구적으로 보존하려면 PVC를 생성하고, Airflow Pod들 (특히 Webserver, Scheduler, Worker Pod Template)에 `/opt/airflow/logs` 경로로 마운트합니다. (StorageClass 필요)
+*   **데이터 공유:** 태스크 간 대용량 데이터 공유가 필요하거나, DAG/Plugin 코드를 PVC를 통해 관리하려면 해당 용도의 PVC를 생성하고 Pod에 마운트합니다.
+
+### 4.6. RBAC 설정 (`airflow-rbac.yaml`)
+
+*   Airflow 스케줄러가 Worker Pod를 생성, 모니터링, 삭제하고 로그를 읽기 위해 K8s API에 접근할 권한이 필요합니다.
+*   `airflow-rbac.yaml`에 정의된 `ServiceAccount`, `Role`, `RoleBinding` (또는 `ClusterRole`, `ClusterRoleBinding`)이 적절한 권한을 부여하는지 확인하고 적용합니다.
+*   `kubectl apply -f infra/k8s/airflow/airflow-rbac.yaml -n airflow`
+
+### 4.7. Database 설정 (`postgres-deployment.yaml`)
+
+*   K8s 환경에서 사용할 Postgres 데이터베이스를 배포합니다. `StatefulSet` 사용을 권장하나, `Deployment`도 가능합니다.
+*   Service(`postgres-service.yaml` 등 필요)를 통해 다른 Airflow 컴포넌트가 DB에 접근할 수 있도록 합니다.
+*   `postgres-secret.yaml`의 비밀번호를 사용하도록 설정합니다.
+*   PVC를 사용하여 데이터베이스 파일을 영속화합니다.
+*   `kubectl apply -f infra/k8s/airflow/postgres-secret.yaml -n airflow`
+*   `kubectl apply -f infra/k8s/airflow/postgres-deployment.yaml -n airflow` (및 관련 Service, PVC YAML)
+
+### 4.8. DAG/Plugin/Model 동기화 설정
+
+*   **방법 결정:** 아래 중 하나의 방법을 선택하고 관련 설정을 구성합니다.
+    *   **(권장) Git-Sync:**
+        *   Webserver, Scheduler, Worker Pod Template에 Git-Sync 사이드카 컨테이너를 추가합니다.
+        *   Git 저장소 주소, 브랜치, 인증 정보(Secret 사용 권장), 동기화 경로 (`/opt/airflow/dags`, `/opt/airflow/plugins` 등)를 설정합니다.
+        *   `airflow-deployments.yaml` 및 `airflow-pod-template-configmap.yaml` 수정 필요.
+    *   **Worker 이미지 포함:**
+        *   Worker Dockerfile에 `COPY dags /opt/airflow/dags` 등을 추가합니다.
+        *   `airflow-configmap.yml`의 `[kubernetes]` 섹션에 `dags_in_image = True` 설정 등을 고려할 수 있습니다.
+        *   Webserver/Scheduler도 동일한 방식 또는 Git-Sync/PVC를 통해 DAG 파일에 접근해야 합니다.
+    *   **Persistent Volume (PVC):**
+        *   공유 PVC를 생성하고 DAG/Plugin 파일을 저장합니다.
+        *   모든 관련 Pod (Webserver, Scheduler, Worker)에 이 PVC를 마운트합니다.
+
+### 4.9. Worker Pod Template 설정 (`airflow-pod-template-configmap.yaml`)
+
+*   `KubernetesExecutor`가 태스크 실행을 위해 생성하는 Worker Pod의 기본 템플릿입니다.
+*   **주요 설정:**
+    *   **Image:** `spec.containers[0].image` 필드에 4.1에서 빌드한 Worker 이미지 경로를 명시합니다. (ConfigMap의 `worker_container_*` 설정이 우선될 수 있음)
+    *   **Secrets/ConfigMaps:** 필요한 K8s Secret (Fernet 키, DB 비밀번호, API 키 등) 및 ConfigMap (Airflow 설정 등)을 환경 변수나 볼륨으로 마운트합니다.
+    *   **Volume Mounts:** PVC (로그, 데이터 공유, DAG 동기화용)나 Git-Sync 볼륨 등을 마운트합니다.
+    *   **Resource Requests/Limits:** 각 Worker Pod의 CPU/메모리 요구량 및 한도를 설정합니다.
+    *   **Service Account:** `spec.serviceAccountName`을 4.6에서 생성한 서비스 어카운트로 지정합니다.
+*   **적용:** `kubectl apply -f infra/k8s/airflow/airflow-pod-template-configmap.yaml -n airflow`
+
+### 4.10. Airflow Deployment 설정 (`airflow-deployments.yaml`)
+
+*   Airflow Webserver와 Scheduler를 K8s Deployment로 배포합니다.
+*   **주요 설정:**
+    *   **Image:** Webserver/Scheduler용 Airflow 이미지를 지정합니다. (Worker 이미지와 같거나 다를 수 있음)
+    *   **Secrets/ConfigMaps:** Airflow 설정 ConfigMap, DB Secret, Fernet Key Secret 등을 환경 변수나 볼륨으로 마운트합니다.
+    *   **Volume Mounts:** PVC (로그, DAG 동기화용)나 Git-Sync 볼륨 등을 마운트합니다.
+    *   **Service Account:** 필요시 적절한 서비스 어카운트를 지정합니다.
+*   **적용:** `kubectl apply -f infra/k8s/airflow/airflow-deployments.yaml -n airflow`
+
+### 4.11. 초기화 Job 설정 (`airflow-init-job.yaml`)
+
+*   DB 마이그레이션 (`airflow db init`) 및 기본 Admin 사용자 생성을 위한 K8s Job입니다.
+*   Deployment와 유사하게 필요한 ConfigMap, Secret, Service Account를 설정합니다.
+*   **실행:** 다른 컴포넌트 배포 후 한 번 실행합니다. (`kubectl apply -f infra/k8s/airflow/airflow-init-job.yaml -n airflow`)
+
+### 4.12. Airflow Service 설정 (`airflow-service.yml`)
+
+*   Airflow Webserver UI에 외부 또는 클러스터 내부에서 접근하기 위한 K8s Service를 정의합니다. (예: `LoadBalancer`, `NodePort`, `ClusterIP` 타입)
+*   **적용:** `kubectl apply -f infra/k8s/airflow/airflow-service.yml -n airflow`
+
+### 4.13. 배포 및 확인
+
+*   위에서 생성/수정한 모든 YAML 파일들을 `kubectl apply -f <file.yaml> -n airflow` 또는 `kubectl apply -k <kustomization_dir>` 명령으로 배포합니다.
+*   `kubectl get pods -n airflow -w` 명령으로 Pod들이 정상적으로 실행되는지 확인합니다.
+*   `kubectl logs <pod_name> -n airflow` 명령으로 로그를 확인합니다.
+*   Service 설정을 통해 Airflow Web UI에 접속하여 DAG 및 시스템 상태를 확인합니다.
+
+## 5. 설정 일관성 유지
+
+*   Docker Compose 환경 (`infra/airflow`)과 Kubernetes 환경 (`infra/k8s/airflow`) 간에 환경 의존적이지 않은 Airflow 설정 값 (예: `parallelism`, `default_timezone`)은 최대한 일치시킵니다.
+*   DAG, Plugin, Model 소스 코드는 단일 소스(예: Git 저장소)에서 관리하고 양쪽 환경에 동일하게 배포/동기화되도록 합니다.
+
+## 6. 로컬 개발 및 테스트
+
+*   `infra/airflow`의 Docker Compose 환경은 로컬에서 DAG 개발 및 단위 테스트에 계속 활용할 수 있습니다.
+*   K8s 환경에서의 통합 테스트는 별도의 테스트 환경 (예: `kind`, `minikube` 또는 개발용 K8s 클러스터)에서 수행하는 것을 고려합니다.
+
+---
+
+이 가이드라인을 바탕으로 `infra/k8s/airflow` 디렉토리의 YAML 파일들을 구체적으로 수정하고 필요한 Docker 이미지를 빌드하면 K8s 환경에서 Airflow를 성공적으로 실행할 수 있을 것입니다.
+
+

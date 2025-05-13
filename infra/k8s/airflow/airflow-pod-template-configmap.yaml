@@ -1,0 +1,118 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: airflow-pod-template
+  namespace: news-platform
+  labels:
+    app: airflow
+data:
+  pod_template.yaml: |-
+    apiVersion: v1
+    kind: Pod
+    metadata:
+      # name: airflow-worker-pod-template # Name will be overridden by Airflow
+      # namespace: news-platform # Namespace will be set by Airflow based on AIRFLOW__KUBERNETES__NAMESPACE
+      labels:
+        app: airflow
+        component: worker
+        # executor: kubernetes # For easier identification
+      annotations:
+        # prometheus.io/scrape: "true"
+        # prometheus.io/port: "8080"
+        # prometheus.io/path: "/metrics"
+        # sidecar.istio.io/inject: "false" # If using Istio and want to disable sidecar for worker pods
+    spec:
+      restartPolicy: Never
+      securityContext:
+        runAsUser: 50000 # Must match AIRFLOW__KUBERNETES__RUN_AS_USER in airflow-config
+        fsGroup: 0       # For /tmp or other writable dirs if needed. Review if 0 is necessary.
+      # serviceAccountName is set by Airflow via AIRFLOW__KUBERNETES__WORKER_SERVICE_ACCOUNT_NAME
+      # serviceAccountName: airflow-worker
+      containers:
+        - name: base # Airflow worker container must be named 'base'
+          image: apache/airflow:2.10.5-python3.11 # Must match WORKER_CONTAINER_REPOSITORY and TAG in airflow-config
+          imagePullPolicy: IfNotPresent
+          securityContext:
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop: ["ALL"]
+            # readOnlyRootFilesystem: true # If possible, for enhanced security
+          resources:
+            requests:
+              cpu: "500m" # Adjust based on typical task load
+              memory: "1Gi"
+            limits:
+              cpu: "1"
+              memory: "2Gi"
+          env:
+            # Secrets for DB, Fernet Key etc. will be passed by the scheduler when it creates the pod.
+            # Or, if workers need to directly access them, they should be mounted here via envFrom.
+            # Example: to make DB connection available if tasks need it (though usually not directly)
+            # - name: AIRFLOW_DB_USER
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: airflow-postgres-secret
+            #       key: airflow-db-user
+            # ... (similar for password, db_name, fernet_key etc.)
+            - name: AIRFLOW__LOGGING__LOGGING_LEVEL
+              value: "INFO"
+            # S3 Logging IAM role or credentials might be needed here if not using instance profile
+            # For IRSA, the serviceAccount (airflow-worker) should be annotated with the IAM role ARN.
+            # For explicit credentials:
+            # - name: AWS_ACCESS_KEY_ID
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: aws-s3-logging-credentials # Create this Secret
+            #       key: aws_access_key_id
+            # - name: AWS_SECRET_ACCESS_KEY
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: aws-s3-logging-credentials
+            #       key: aws_secret_access_key
+          volumeMounts:
+            # DAGs are made available to worker pods by the KubernetesExecutor, typically by serializing
+            # and passing them, or by ensuring the worker pod has access to the same DAGs location as scheduler.
+            # If DAGs are synced via Git-Sync to scheduler/webserver using an emptyDir, that same emptyDir is not
+            # directly shareable. Workers usually rely on Airflow's mechanisms or have DAGs in their image.
+            # For simplicity, we assume Airflow handles DAG availability for the task.
+            # A /tmp mount is generally useful.
+            - name: tmp-volume
+              mountPath: /tmp
+            # If tasks need to write logs locally before remote persistence (S3), 
+            # an emptyDir for logs can be useful, though S3 direct write is common.
+            # - name: worker-logs
+            #   mountPath: /opt/airflow/logs # Standard Airflow logs path
+      volumes:
+        - name: tmp-volume
+          emptyDir: {}
+        # - name: worker-logs
+        #   emptyDir: {} # Local log persistence for the pod lifecycle
+      # Node affinity, tolerations etc. from your original pod_template.yaml can be kept here
+      nodeSelector:
+        workload-type: airflow
+      affinity:
+        nodeAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              preference:
+                matchExpressions:
+                  - key: node-type
+                    operator: In
+                    values:
+                      - compute-optimized
+        podAntiAffinity:
+          preferredDuringSchedulingIgnoredDuringExecution:
+            - weight: 100
+              podAffinityTerm:
+                labelSelector:
+                  matchExpressions:
+                    - key: component
+                      operator: In
+                      values:
+                        - worker
+                topologyKey: "kubernetes.io/hostname"
+      tolerations:
+        - key: "dedicated"
+          operator: "Equal"
+          value: "airflow"
+          effect: "NoSchedule" 

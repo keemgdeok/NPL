@@ -1,71 +1,67 @@
 """
 Airflow DAG 테스트를 위한 공통 픽스처
 
-이 모듈은 Airflow DAG 테스트에 필요한 공통 픽스처를 정의합니다.
+이 모듈은 Airflow DAG 테스트에 필요한 공통 픽스처를 정의
 """
-import os
+
 import pytest
 from unittest import mock
 from datetime import datetime
 
-from airflow.models import DagBag, Variable, Connection
-from airflow.utils.session import create_session
+from unittest.mock import patch
+from airflow.models.dagbag import DagBag
 
 
-# DAG 백 픽스처
-@pytest.fixture
-def dagbag():
-    """테스트용 DagBag 객체를 반환합니다."""
-    return DagBag(dag_folder="/opt/airflow/dags", include_examples=False)
+# Variable.get 패치를 준비하는 픽스처
+@pytest.fixture(scope="session") 
+def variable_patch_context(): 
+    variable_defaults = {
+        'EMAIL_NOTIFICATION': 'test-user@example.com', # 테스트 기대값과 일치
+        'KAFKA_BOOTSTRAP_SERVERS': 'mock_kafka:9092',
+        'MONGODB_URI': 'mongodb://mock_user:mock_pass@mock_mongo:27017',
+        'DATABASE_NAME': 'mock_db',
+        'DOCKER_NETWORK': 'mock-network',
+        'PROJECT_PATH': '/mock/project/path',
+        'AWS_ACCESS_KEY_ID': 'mock_aws_key_id',
+        'AWS_SECRET_ACCESS_KEY': 'mock_aws_secret_key',
+        'AWS_REGION': 'mock-region-1',
+        'S3_BUCKET_NAME': 'mock-s3-bucket',
+        'MODEL_PVC_NAME': 'mock-airflow-models-pvc',
+        'K8S_NAMESPACE': 'mock-airflow-ns',
+        'AWS_K8S_SECRET_NAME': 'mock-aws-credentials',
+        # monitoring_dag.py 에서 사용하는 Variable 추가
+        'MONITORING_IMAGE': 'mock-monitoring-image:latest',
+        'MONGODB_K8S_SECRET_NAME': 'mock-mongodb-credentials',
+        'SLACK_K8S_SECRET_NAME': 'mock-slack-webhook',
+        'TEAMS_K8S_SECRET_NAME': 'mock-teams-webhook',
+        'AIRFLOW_WORKER_IMAGE': 'mock-airflow-worker-image:latest', 
+    }
+    def get_variable_side_effect(name, default_var=None):
+        if name in variable_defaults:
+            return variable_defaults[name]
+        if default_var is not None:
+            return default_var
+        raise KeyError(f"Mock Variable: {name} not found and no default_var provided.")
+    
+    # patch 객체를 반환
+    return patch('airflow.models.Variable.get', side_effect=get_variable_side_effect)
 
+# dagbag 픽스처 수정: variable_patch_context를 사용하여 DagBag 생성 감싸기
+@pytest.fixture(scope="session")
+def dagbag(variable_patch_context): # variable_patch_context 픽스처 주입
+    """테스트용 DagBag 객체를 반환합니다 (Variable.get 패치 적용)."""
+    dags_folder = "/mnt/c/Users/keemg/npl/infra/airflow/dags" 
+    
+    # patch 활성화 상태에서 DagBag 생성 및 파싱 수행
+    with variable_patch_context:
+        the_dagbag = DagBag(
+            dag_folder=dags_folder, 
+            include_examples=False, 
+            read_dags_from_db=False # DB 접근 없이 순수하게 파일만 파싱
+        )
 
-# 환경 변수 모의 설정
-@pytest.fixture(scope="session", autouse=True)
-def mock_env_variables():
-    """테스트에 필요한 환경 변수를 모의 설정합니다."""
-    with mock.patch.dict("os.environ", {
-        "AIRFLOW__CORE__FERNET_KEY": "mock_fernet_key",
-        "AIRFLOW_CONN_MONGODB": "mongodb://mock:27017/mock_db",
-        "KAFKA_BOOTSTRAP_SERVERS": "mock-kafka:9092",
-        "MONGODB_NEWS_COLLECTION": "test_news_articles",
-        "MONGODB_PROCESSED_COLLECTION": "test_processed_articles",
-        "MONGODB_SENTIMENT_COLLECTION": "test_sentiment_articles",
-        "MONGODB_SUMMARY_COLLECTION": "test_summary_articles",
-        "AWS_S3_BUCKET_NAME": "test-news-bucket",
-        "SLACK_WEBHOOK_URL": "https://mock-slack-webhook.com/test",
-        "MS_TEAMS_WEBHOOK_URL": "https://mock-teams-webhook.com/test",
-        "ALERT_EMAIL_RECIPIENTS": "test@example.com"
-    }):
-        yield
-
-
-# Airflow 변수 모의 설정
-@pytest.fixture(scope="function", autouse=True)
-def mock_airflow_variables():
-    """테스트에 필요한 Airflow 변수를 모의 설정합니다."""
-    with mock.patch.object(Variable, "get") as mock_var_get:
-        def variable_side_effect(key, default=None):
-            """Variable.get 호출에 대한 사이드 이펙트 함수"""
-            test_variables = {
-                "KAFKA_BOOTSTRAP_SERVERS": "mock-kafka:9092",
-                "MONGODB_URI": "mongodb://mock:27017/mock_db",
-                "DATABASE_NAME": "mock_db",
-                "MONGODB_NEWS_COLLECTION": "test_news_articles",
-                "MONGODB_PROCESSED_COLLECTION": "test_processed_articles",
-                "MONGODB_SENTIMENT_COLLECTION": "test_sentiment_articles",
-                "MONGODB_SUMMARY_COLLECTION": "test_summary_articles",
-                "AWS_S3_BUCKET_NAME": "test-news-bucket",
-                "AWS_S3_NEWS_PREFIX": "news/",
-                "ENABLE_NOTIFICATIONS": "true",
-                "SLACK_WEBHOOK_URL": "https://mock-slack-webhook.com/test",
-                "MS_TEAMS_WEBHOOK_URL": "https://mock-teams-webhook.com/test",
-                "ALERT_EMAIL_RECIPIENTS": "test@example.com",
-                "EMAIL_NOTIFICATION": "test@example.com"
-            }
-            return test_variables.get(key, default)
-        
-        mock_var_get.side_effect = variable_side_effect
-        yield
+    # with 블록 벗어나면 patch 비활성화, 하지만 DAG 객체는 이미 파싱됨
+    return the_dagbag
 
 
 # 테스트 컨텍스트 픽스처
@@ -124,3 +120,4 @@ def mock_kafka_client():
         ])
         
         yield mock_producer, mock_consumer 
+

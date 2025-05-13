@@ -1,0 +1,134 @@
+# Helm Chart Values for Airflow on Docker Desktop (Helm-centric) - Aligned with Official Chart (Airflow 2.9+ compatible structure)
+# It's recommended to deploy Airflow into a specific namespace, e.g., 'pipeline-platform'.
+# Use 'helm install <release-name> apache-airflow/airflow -n <namespace> -f this_file.yaml'
+
+# -- Airflow Core Settings --
+airflowVersion: "2.10.5"
+executor: KubernetesExecutor
+# defaultAirflowRepository: apache/airflow # Let chart default
+# defaultAirflowTag: "2.9.2" # Let chart default, derived from airflowVersion
+
+# >>>>>>>>>>>> 이 곳이나 비슷한 최상위 위치에 추가 <<<<<<<<<<<<<<<
+webserverSecretKey: "admin811" # IMPORTANT: 실제 운영에서는 강력하고 임의의 문자열로 변경하세요!
+
+# Keep base images definition
+images:
+  airflow:
+    repository: apache/airflow # 명시적으로 apache/airflow 사용
+    tag: "2.10.5"             # airflowVersion과 일치
+    pullPolicy: "IfNotPresent" # This is a common and good default
+  gitSync:
+    repository: registry.k8s.io/git-sync/git-sync
+    tag: v4.3.0 # Updated to official chart's version for git-sync
+    pullPolicy: IfNotPresent
+  # flower: ... # Default flower image will be used if flower is enabled
+
+# -- Webserver Settings --
+webserver:
+  enabled: true # 명시적으로 활성화
+  defaultUser:
+    enabled: true
+    role: Admin
+    username: admin
+    email: admin@example.com
+    firstName: Admin
+    lastName: User
+    password: "admin" # IMPORTANT: Change this for any real deployment!
+  # service: # Keep commented, use chart defaults
+  #   type: LoadBalancer
+  #   ports:
+  #     - name: http
+  #       port: 80
+  #       targetPort: 8080 # Default Airflow UI port
+
+# -- Scheduler Settings -- (Commented out - use chart defaults)
+scheduler: # Scheduler 설정 섹션 활성화 (또는 추가)
+  enabled: true # Added to resolve helm upgrade error
+  # Remove git-sync definitions from scheduler
+
+# -- DagProcessor Settings -- (Official chart might have this at top level or under 'workers')
+dagProcessor:
+  enabled: true # Added to resolve helm upgrade error
+  # Remove extraContainers and extraVolumes, relying on dags.gitSync.enabled
+  # persistence: # DAG persistence는 전역 dags 섹션에서 false로 설정됨
+  #   enabled: false
+
+# -- Triggerer Settings --
+triggerer:
+  keda:
+    enabled: false
+
+
+# -- DAGs Settings --
+dags:
+  mountPath: /opt/airflow/dags
+  gitSync:
+    enabled: true
+    repo: "https://github.com/keemgdeok/airflow-dags.git"
+    branch: master
+    subPath: "" # Ensure this exists or is uncommented
+    # Add security context specifically for the git-sync container
+    securityContext:
+      runAsUser: 50000 # Airflow user ID
+      runAsGroup: 0    # Group 0 (root) often has write access
+  persistence:
+    enabled: true # Must be true for PVC usage
+    existingClaim: airflow-dags-pvc # Use the pre-created PVC
+
+# -- Database Settings --
+# The official chart enables PostgreSQL by default.
+postgresql:
+  enabled: true # Use the Helm chart's built-in PostgreSQL
+  auth:
+    username: airflow # Default user for airflow metadata DB by chart
+    password: airflow # Default password for airflow metadata DB by chart
+    database: airflow # Default DB name for airflow metadata DB by chart
+
+# -- Redis Settings --
+# Redis is not strictly required for KubernetesExecutor.
+redis:
+  enabled: false # Disabled as KubernetesExecutor is used.
+
+# -- RBAC Settings -- (Official chart enables this by default)
+rbac:
+  create: true
+
+# -- Secrets Management --
+# Fernet key: Helm chart generates one if not provided OR can use an existing secret.
+# Official chart uses: fernetKey (to provide value) or fernetKeySecretName (to ref existing secret)
+fernetKeySecretName: airflow-fernet-key # Use the secret we created
+
+# -- Airflow Configuration (airflow.cfg overrides) --
+# Refer to official chart for more extensive config options if needed.
+config:
+  core:
+    executor: "{{ .Values.executor }}"
+    # dags_folder should point to where the main container expects the synced repo folder
+    # Assumes main container mounts 'dags' volume at /opt/airflow/dags
+    # and git-sync places content in 'repo' subdir within that volume.
+    dags_folder: "{{ .Values.dags.mountPath }}/repo"
+    load_examples: "False"
+  scheduler: # 스케줄러 관련 설정
+    dag_dir_list_interval: 30 # DAG 폴더 스캔 간격을 30초로 단축
+  kubernetes_executor: # Settings for KubernetesExecutor (Airflow 2.5+)
+    namespace: "{{ .Release.Namespace }}"
+    pod_template_file: "{{ .Values.airflowHome | default \"/opt/airflow\" }}/pod_templates/pod_template_file.yaml"
+    # worker_container_repository: "{{ .Values.images.airflow.repository | default .Values.defaultAirflowRepository }}" # Usually derived
+    # worker_container_tag: "{{ .Values.images.airflow.tag | default .Values.defaultAirflowTag }}" # Usually derived
+  # api_auth: # For Airflow 3.0+ FastAPI API authentication - Commented out for 2.x
+  #   jwt_secret: "admin811" # IMPORTANT: Change this to a strong, random string for production!
+  # Other critical settings might be needed later based on behavior
+
+# -- Job settings --
+jobs:
+  migrateDatabase:
+    enabled: true # DB migration is usually necessary
+  # createUserJob: # This job is handled by webserver.defaultUser in newer charts if webserver.defaultUser.enabled is true
+  #   enabled: false # Keep disabled or remove
+
+# -- Global settings (example from official chart, if needed) --
+# airflowHome: /opt/airflow # Can be set globally
+# uid: 50000
+# gid: 0
+
+

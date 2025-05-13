@@ -1,0 +1,104 @@
+# PostgreSQL Service 정의 (내부 접근용)
+apiVersion: v1
+kind: Service
+metadata:
+  name: airflow-postgres # Airflow ConfigMap 및 Secret에서 참조할 DB 호스트 이름
+  namespace: news-platform
+  labels:
+    app: airflow
+    component: postgresql
+spec:
+  ports:
+    - port: 5432 # PostgreSQL 기본 포트
+      name: postgres
+  clusterIP: None # Headless Service로 설정하여 StatefulSet의 각 Pod에 직접 접근 (선택 사항, ClusterIP로 해도 무방)
+  selector:
+    app: airflow
+    component: postgresql
+---
+# PostgreSQL StatefulSet 정의
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: airflow-postgres
+  namespace: news-platform
+  labels:
+    app: airflow
+    component: postgresql
+spec:
+  serviceName: airflow-postgres # 위에서 정의한 Headless Service 이름과 일치
+  replicas: 1 # PostgreSQL 레플리카 수 (단일 인스턴스. 고가용성이 필요하면 Patroni 등 별도 솔루션 필요)
+  selector:
+    matchLabels:
+      app: airflow
+      component: postgresql
+  template:
+    metadata:
+      labels:
+        app: airflow
+        component: postgresql
+    spec:
+      securityContext:
+        fsGroup: 1000 # PostgreSQL 이미지의 기본 사용자 그룹에 맞춰 설정 (이미지 문서 확인 필요)
+      containers:
+        - name: postgres
+          image: postgres:13 # Docker Compose에서 사용한 버전과 일치 또는 원하는 버전
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 5432
+              name: postgres
+          env:
+            - name: POSTGRES_DB
+              valueFrom:
+                secretKeyRef:
+                  name: airflow-postgres-secret
+                  key: airflow-db-name
+            - name: POSTGRES_USER
+              valueFrom:
+                secretKeyRef:
+                  name: airflow-postgres-secret
+                  key: airflow-db-user
+            - name: POSTGRES_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: airflow-postgres-secret
+                  key: airflow-db-password # Airflow DB 사용자 암호 사용
+            # POSTGRES_HOST_AUTH_METHOD: "scram-sha-256" # 보안 강화를 위해 scram-sha-256 사용 권장
+            # PGDATA: /var/lib/postgresql/data/pgdata # 기본값 사용 시 불필요
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
+          volumeMounts:
+            - name: postgres-data
+              mountPath: /var/lib/postgresql/data # PostgreSQL 데이터 디렉토리
+          livenessProbe:
+            tcpSocket:
+              port: postgres
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+          readinessProbe:
+            exec:
+              command:
+                - /bin/sh
+                - -c
+                - "pg_isready -U $POSTGRES_USER -d $POSTGRES_DB -h 127.0.0.1 -p 5432"
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 6
+  # PostgreSQL 데이터를 저장하기 위한 영구 볼륨 요청 템플릿
+  volumeClaimTemplates:
+    - metadata:
+        name: postgres-data # volumeMounts의 name과 일치
+      spec:
+        accessModes: ["ReadWriteOnce"] # 단일 PostgreSQL 인스턴스이므로 RWO 사용
+        storageClassName: "standard" # 클러스터에 구성된 기본 StorageClass 사용 (또는 특정 SC 지정)
+        resources:
+          requests:
+            storage: 20Gi # PostgreSQL 데이터에 필요한 스토리지 크기 

@@ -49,7 +49,7 @@ data/
 .docker/
 
 # Kubernetes
-k8s/secrets/
+# k8s/secrets/
 
 # Testing
 .coverage
@@ -57,11 +57,11 @@ htmlcov/
 .pytest_cache/
 
 # Airflow
-airflow.db
-airflow.cfg
-unittests.cfg
-logs/
-airflow-webserver.pid 
+# airflow.db
+# airflow.cfg
+# unittests.cfg
+# logs/
+# airflow-webserver.pid 
 
 test_results/
 
@@ -69,5 +69,5 @@ test_results/
 README.md
 
 # Cursor rules
-.cursor/rules/
+# .cursor/rules/
 

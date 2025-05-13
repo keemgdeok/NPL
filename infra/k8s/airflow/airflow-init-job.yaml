@@ -1,0 +1,116 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: airflow-init-db
+  namespace: news-platform
+  labels:
+    app: airflow
+    component: init-job
+  annotations:
+    # Helm 차트 등에서 사용하는 것처럼, Job 완료 후 자동으로 삭제되도록 하려면 다음 어노테이션 사용 가능 (TTL 컨트롤러 필요)
+    # "helm.sh/hook": post-install,post-upgrade
+    # "helm.sh/hook-delete-policy": hook-succeeded,before-hook-creation
+    # "helm.sh/hook-weight": "1"
+    # 또는 Kubernetes 1.21+ 부터는 Job의 .spec.ttlSecondsAfterFinished 사용 가능
+spec:
+  # ttlSecondsAfterFinished: 3600 # 1시간 후 Job과 해당 Pod 자동 삭제 (Kubernetes 1.21+)
+  template:
+    metadata:
+      labels:
+        app: airflow
+        component: init-job
+    spec:
+      restartPolicy: OnFailure # 실패 시 재시도 (Pod 재시작)
+      serviceAccountName: airflow-scheduler # DB init/user create도 K8s API는 사용하지 않지만, ConfigMap/Secret 접근은 필요할 수 있음
+      securityContext:
+        runAsUser: 50000 # Airflow 이미지 사용자 ID
+        fsGroup: 0       # 볼륨 마운트 권한 문제 방지용 (필요시 조정)
+      volumes:
+        - name: dags-volume # DAGs 볼륨은 직접 사용하지 않지만, airflow 명령이 경로를 찾을 수 있도록 마운트 (emptyDir)
+          emptyDir: {}
+        - name: logs-volume # 로그 볼륨도 유사하게 마운트 (emptyDir)
+          emptyDir: {}
+      containers:
+        - name: airflow-db-init
+          image: apache/airflow:2.10.5-python3.11 # 웹서버/스케줄러와 동일 이미지 사용
+          imagePullPolicy: IfNotPresent
+          command: ["/bin/bash", "-c"]
+          args:
+            - |
+              echo "Waiting for PostgreSQL to be ready..."
+              # PGHOST는 airflow-postgres Service 이름, PGPORT는 5432, PGPASSWORD는 Secret에서 가져옴
+              # airflow-postgres-secret에서 airflow-db-user, airflow-db-password, airflow-db-name을 환경변수로 설정했다고 가정
+              until pg_isready -h airflow-postgres -p 5432 -U "${AIRFLOW_DB_USER}"; do
+                echo "PostgreSQL is unavailable - sleeping"
+                sleep 5
+              done
+              echo "PostgreSQL is up - initializing/upgrading database."
+              airflow db upgrade
+              echo "Database initialization/upgrade complete."
+              echo "Creating Airflow admin user (credentials from Secret)..."
+              airflow users create \
+                --username "${AIRFLOW_ADMIN_USER}" \
+                --password "${AIRFLOW_ADMIN_PASSWORD}" \
+                --firstname "${AIRFLOW_ADMIN_FIRSTNAME}" \
+                --lastname "${AIRFLOW_ADMIN_LASTNAME}" \
+                --role "${AIRFLOW_ADMIN_ROLE}" \
+                --email "${AIRFLOW_ADMIN_EMAIL}"
+              echo "Airflow admin user creation attempt complete."
+          envFrom:
+            - configMapRef:
+                name: airflow-config # AIRFLOW__CORE__EXECUTOR 등 일부 설정 로드
+            - secretRef:
+                name: airflow-postgres-secret # DB 접속 정보, Fernet 키, 웹서버 시크릿 키, 관리자 계정 정보 포함
+          env:
+            - name: AIRFLOW__CORE__SQL_ALCHEMY_CONN # Secret 값들을 조합하여 설정
+              value: "postgresql+psycopg2://$(AIRFLOW_DB_USER):$(AIRFLOW_DB_PASSWORD)@airflow-postgres:5432/$(AIRFLOW_DB_NAME)"
+            # Admin User Creation - Secret (airflow-postgres-secret)에 아래 키들이 정의되어 있어야 함
+            # 또는 여기서 기본값을 사용하거나 직접 값을 입력할 수 있음
+            - name: AIRFLOW_ADMIN_USER
+              valueFrom:
+                secretKeyRef:
+                  name: airflow-postgres-secret
+                  key: airflow-admin-user
+                  optional: true
+            - name: AIRFLOW_ADMIN_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: airflow-postgres-secret
+                  key: airflow-admin-password
+                  optional: true
+            - name: AIRFLOW_ADMIN_FIRSTNAME
+              valueFrom:
+                secretKeyRef:
+                  name: airflow-postgres-secret
+                  key: airflow-admin-firstname
+                  optional: true
+            - name: AIRFLOW_ADMIN_LASTNAME
+              valueFrom:
+                secretKeyRef:
+                  name: airflow-postgres-secret
+                  key: airflow-admin-lastname
+                  optional: true
+            - name: AIRFLOW_ADMIN_ROLE
+              valueFrom:
+                secretKeyRef:
+                  name: airflow-postgres-secret
+                  key: airflow-admin-role
+                  optional: true
+            - name: AIRFLOW_ADMIN_EMAIL
+              valueFrom:
+                secretKeyRef:
+                  name: airflow-postgres-secret
+                  key: airflow-admin-email
+                  optional: true
+          volumeMounts:
+            - name: dags-volume
+              mountPath: /opt/airflow/dags
+            - name: logs-volume
+              mountPath: /opt/airflow/logs
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "100m"
+            limits:
+              memory: "512Mi"
+              cpu: "200m" 

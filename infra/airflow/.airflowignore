@@ -1,0 +1,27 @@
+# Git 내부 관리용 디렉토리 및 파일 무시
+.git
+.git/*
+.gitignore
+.gitattributes
+.gitmodules
+
+# Git worktree 관련 디렉토리 무시
+.worktrees
+.worktrees/*
+
+# Python 가상 환경 폴더 무시 (일반적으로 DAG 폴더에 포함되지 않지만, 만약을 위해)
+venv
+.venv
+env
+.env
+
+# Python 컴파일 캐시 파일 및 폴더 무시
+__pycache__
+*.pyc
+*.pyo
+
+# 기타 운영체제나 편집기 관련 파일 무시 (선택 사항)
+.DS_Store
+Thumbs.db
+*.swp
+*.swo

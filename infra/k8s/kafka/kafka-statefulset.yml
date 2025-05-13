@@ -6,7 +6,7 @@ metadata:
   labels:
     app: kafka
 spec:
-  serviceName: "kafka"
+  serviceName: "kafka-svc"
   replicas: 3
   selector:
     matchLabels:
@@ -17,6 +17,17 @@ spec:
         app: kafka
     spec:
       terminationGracePeriodSeconds: 300
+      securityContext:
+        runAsUser: 1001
+        runAsGroup: 1001
+        fsGroup: 1001
+      volumes:
+        - name: kafka-config-volume
+          configMap:
+            name: kafka-config
+            items:
+              - key: server.properties
+                path: server.properties
       containers:
       - name: kafka
         image: confluentinc/cp-kafka:7.3.0
@@ -66,16 +77,29 @@ spec:
         volumeMounts:
         - name: data
           mountPath: /var/lib/kafka/data
+        - name: kafka-config-volume
+          mountPath: /etc/kafka/config/server.properties
+          subPath: server.properties
         readinessProbe:
           tcpSocket:
-            port: 9092
+            port: kafka-client
           initialDelaySeconds: 15
           periodSeconds: 10
+          timeoutSeconds: 5
+          failureThreshold: 3
         livenessProbe:
           tcpSocket:
-            port: 9092
+            port: kafka-client
           initialDelaySeconds: 30
           periodSeconds: 20
+          timeoutSeconds: 5
+          failureThreshold: 3
+        securityContext:
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false
+          capabilities:
+            drop:
+              - ALL
   volumeClaimTemplates:
   - metadata:
       name: data
@@ -106,7 +130,7 @@ spec:
 apiVersion: v1
 kind: Service
 metadata:
-  name: kafka-external
+  name: kafka-client-service
   namespace: news-platform
   labels:
     app: kafka
@@ -114,7 +138,18 @@ spec:
   type: ClusterIP
   ports:
   - port: 9092
-    targetPort: 9092
+    targetPort: kafka-client
     name: kafka-client
   selector:
+    app: kafka
+---
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: kafka-pdb
+  namespace: news-platform
+spec:
+  minAvailable: 2
+  selector:
+    matchLabels:
     app: kafka 

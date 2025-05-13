@@ -1,0 +1,58 @@
+# Bitnami Kafka Helm Chart values.yaml 예시
+# 내부 통신용, 3노드, Zookeeper 내장, 인증 비활성화, 리소스 제한 포함
+
+replicaCount: 3  # Kafka 브로커 개수
+
+zookeeper:
+  enabled: true
+  replicaCount: 3  # Zookeeper 노드 개수
+  persistence:
+    enabled: true
+    size: 5Gi  # Zookeeper 데이터 볼륨 크기
+
+persistence:
+  enabled: true
+  size: 10Gi  # Kafka 데이터 볼륨 크기
+
+controller:
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 1
+      memory: 2Gi
+
+broker:
+  resources:
+    requests:
+      cpu: 500m
+      memory: 1Gi
+    limits:
+      cpu: 1
+      memory: 2Gi
+
+defaultInitContainers:
+  prepareConfig:
+    resources:
+      requests:
+        cpu: 100m
+        memory: 128Mi
+      limits:
+        cpu: 200m
+        memory: 256Mi
+
+service:
+  type: ClusterIP  # 클러스터 내부 통신용
+  port: 9092
+
+externalAccess:
+  enabled: false  # 외부 접근 필요시 true로 변경
+
+auth:
+  enabled: false  # 인증 필요시 true로 변경
+
+# 필요에 따라 아래 설정도 추가 가능
+# logRetentionHours: 168
+# logRetentionBytes: 1073741824
+# autoCreateTopicsEnable: true 

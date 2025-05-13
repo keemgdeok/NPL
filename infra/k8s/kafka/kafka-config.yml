@@ -3,25 +3,44 @@ kind: ConfigMap
 metadata:
   name: kafka-config
   namespace: news-platform
+  # Kafka 브로커의 핵심 설정을 정의하는 ConfigMap
 data:
   server.properties: |
+    # 네트워크 스레드 수
     num.network.threads=3
+    # I/O 스레드 수
     num.io.threads=8
+    # 소켓 송신 버퍼 크기
     socket.send.buffer.bytes=102400
+    # 소켓 수신 버퍼 크기
     socket.receive.buffer.bytes=102400
+    # 최대 소켓 요청 크기
     socket.request.max.bytes=104857600
+    # 로그 디렉토리 경로
     log.dirs=/var/lib/kafka/data
+    # 기본 파티션 수
     num.partitions=3
+    # 데이터 디렉토리당 복구 스레드 수
     num.recovery.threads.per.data.dir=1
+    # 오프셋 토픽 복제 계수 (Kafka 브로커 레플리카 수와 일치 또는 작게)
     offsets.topic.replication.factor=3
+    # 트랜잭션 상태 로그 복제 계수 (Kafka 브로커 레플리카 수와 일치 또는 작게)
     transaction.state.log.replication.factor=3
+    # 트랜잭션 상태 로그 최소 ISR (In-Sync Replicas)
     transaction.state.log.min.isr=2
+    # 로그 보존 시간 (시간 단위)
     log.retention.hours=168
+    # 로그 세그먼트 크기 (바이트 단위)
     log.segment.bytes=1073741824
+    # 로그 보존 확인 간격 (밀리초 단위)
     log.retention.check.interval.ms=300000
+    # Zookeeper 연결 타임아웃 (밀리초 단위)
     zookeeper.connection.timeout.ms=18000
+    # 초기 그룹 리밸런스 지연 시간 (밀리초 단위)
     group.initial.rebalance.delay.ms=0
+    # 토픽 자동 생성 비활성화 (권장)
     auto.create.topics.enable=false
+    # 토픽 삭제 기능 활성화
     delete.topic.enable=true
 ---
 apiVersion: v1
@@ -29,6 +48,7 @@ kind: ConfigMap
 metadata:
   name: kafka-topics
   namespace: news-platform
+  # Kafka 초기 토픽 생성을 위한 설정을 정의하는 ConfigMap (별도의 Job이나 스크립트에서 사용)
 data:
   topics.json: |
     {
@@ -63,14 +83,17 @@ data:
       ]
     }
 ---
+# Zookeeper StatefulSet 정의
 apiVersion: apps/v1
 kind: StatefulSet
 metadata:
   name: zookeeper
   namespace: news-platform
+  labels:
+    app: zookeeper
 spec:
-  serviceName: zookeeper-svc
-  replicas: 3
+  serviceName: zookeeper-svc # Headless Service 이름
+  replicas: 3 # Zookeeper 앙상블 크기 (홀수 권장)
   selector:
     matchLabels:
       app: zookeeper
@@ -79,16 +102,21 @@ spec:
       labels:
         app: zookeeper
     spec:
+      # Pod 수준 보안 컨텍스트: 모든 컨테이너에 적용될 수 있음
+      securityContext:
+        runAsUser: 1000 # Non-root 사용자 ID (이미지에 따라 적절히 수정)
+        runAsGroup: 1000 # Non-root 그룹 ID (이미지에 따라 적절히 수정)
+        fsGroup: 1000    # 볼륨 접근을 위한 파일 시스템 그룹 ID
       containers:
       - name: zookeeper
-        image: confluentinc/cp-zookeeper:7.3.0
+        image: confluentinc/cp-zookeeper:7.3.0 # 명시적인 이미지 태그 사용
         ports:
         - containerPort: 2181
-          name: client
+          name: client # 클라이언트 연결 포트
         - containerPort: 2888
-          name: server
+          name: server # 서버 간 통신 포트
         - containerPort: 3888
-          name: leader-election
+          name: leader-election # 리더 선출 포트
         env:
         - name: ZOOKEEPER_CLIENT_PORT
           value: "2181"
@@ -98,21 +126,56 @@ spec:
           value: "5"
         - name: ZOOKEEPER_SYNC_LIMIT
           value: "2"
+        # 각 Zookeeper Pod의 FQDN을 명시적으로 지정
         - name: ZOOKEEPER_SERVERS
           value: "zookeeper-0.zookeeper-svc.news-platform.svc.cluster.local:2888:3888;zookeeper-1.zookeeper-svc.news-platform.svc.cluster.local:2888:3888;zookeeper-2.zookeeper-svc.news-platform.svc.cluster.local:2888:3888"
+        # 컨테이너 리소스 요청 및 제한
+        resources:
+          requests:
+            memory: "512Mi"
+            cpu: "250m"
+          limits:
+            memory: "1Gi"
+            cpu: "1"
+        # Liveness Probe: 컨테이너가 살아있는지 확인
+        livenessProbe:
+          tcpSocket:
+            port: client # 2181 포트
+          initialDelaySeconds: 15 # 시작 후 15초 뒤 첫 검사
+          periodSeconds: 20    # 20초 간격으로 검사
+          timeoutSeconds: 5
+          failureThreshold: 3
+        # Readiness Probe: 컨테이너가 요청을 처리할 준비가 되었는지 확인
+        readinessProbe:
+          tcpSocket:
+            port: client # 2181 포트
+          initialDelaySeconds: 10 # 시작 후 10초 뒤 첫 검사
+          periodSeconds: 10    # 10초 간격으로 검사
+          timeoutSeconds: 5
+          failureThreshold: 3
+        # 컨테이너 수준 보안 컨텍스트
+        securityContext:
+          # runAsUser, runAsGroup은 Pod 수준에서 상속받거나 여기서 재정의 가능
+          runAsNonRoot: true
+          allowPrivilegeEscalation: false # 권한 상승 방지
+          capabilities:
+            drop:
+              - ALL # 모든 Linux capabilities 제거
         volumeMounts:
         - name: data
-          mountPath: /var/lib/zookeeper/data
+          mountPath: /var/lib/zookeeper/data # Zookeeper 데이터 디렉토리
+  # 영구 볼륨 요청 템플릿
   volumeClaimTemplates:
   - metadata:
       name: data
     spec:
-      accessModes: [ "ReadWriteOnce" ]
-      storageClassName: "standard"
+      accessModes: [ "ReadWriteOnce" ] # 단일 노드에서 읽기/쓰기 가능
+      storageClassName: "standard" # 클러스터에 정의된 StorageClass 사용 (필요시 수정)
       resources:
         requests:
-          storage: 10Gi
+          storage: 10Gi # 각 Zookeeper Pod에 10Gi 스토리지 요청
 ---
+# Zookeeper Headless Service 정의 (StatefulSet의 Pod 직접 접근용)
 apiVersion: v1
 kind: Service
 metadata:
@@ -128,6 +191,19 @@ spec:
     name: server
   - port: 3888
     name: leader-election
-  clusterIP: None
+  clusterIP: None # Headless Service로 설정
   selector:
-    app: zookeeper 
+    app: zookeeper # Zookeeper Pod들을 선택
+---
+# Zookeeper PodDisruptionBudget (PDB) 정의
+# 자발적 중단(예: 노드 유지보수) 시 최소 가용 Pod 수를 보장
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: zookeeper-pdb
+  namespace: news-platform
+spec:
+  minAvailable: 2 # 최소 2개의 Zookeeper Pod가 항상 사용 가능하도록 설정 (replicas: 3 기준)
+  selector:
+    matchLabels:
+      app: zookeeper # Zookeeper Pod들을 선택 

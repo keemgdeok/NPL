@@ -1,0 +1,239 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: airflow-webserver
+  namespace: news-platform
+  labels:
+    app: airflow
+    component: webserver
+spec:
+  replicas: 1 # 웹서버 레플리카 수
+  selector:
+    matchLabels:
+      app: airflow
+      component: webserver
+  template:
+    metadata:
+      labels:
+        app: airflow
+        component: webserver
+    spec:
+      serviceAccountName: default # 웹서버는 Kubernetes API 직접 접근 권한이 거의 필요 없으므로 default SA 사용
+                                   # 또는 최소 권한의 전용 SA (예: airflow-webserver-sa) 생성 후 지정
+      securityContext:
+        runAsUser: 50000 # Airflow 이미지 사용자 ID
+        fsGroup: 0       # Git-Sync로 인한 권한 문제 방지용 (필요시 조정)
+      volumes:
+        - name: dags-volume
+          emptyDir: {}
+        - name: logs-volume # S3 원격 로깅을 주로 사용하면 emptyDir로 충분할 수 있음
+          emptyDir: {}
+        # Git SSH 키를 위한 Secret 볼륨 (이 Secret은 수동으로 생성 필요)
+        - name: git-ssh-key
+          secret:
+            secretName: git-ssh-secret # 예: kubectl create secret generic git-ssh-secret --from-file=sshPrivateKey=~/.ssh/id_rsa -n news-platform
+            defaultMode: 0400 # SSH 키 권한
+      containers:
+        - name: airflow-webserver
+          image: apache/airflow:2.10.5-python3.11
+          imagePullPolicy: IfNotPresent
+          command: ["airflow", "webserver"]
+          ports:
+            - containerPort: 8081
+              name: web
+          envFrom:
+            - configMapRef:
+                name: airflow-config
+            - secretRef:
+                name: airflow-postgres-secret # DB 접속정보, Fernet키, 웹서버 시크릿키 포함
+          env:
+            - name: AIRFLOW__CORE__SQL_ALCHEMY_CONN # Secret 값들을 조합하여 설정
+              value: "postgresql+psycopg2://$(AIRFLOW_DB_USER):$(AIRFLOW_DB_PASSWORD)@airflow-postgres:5432/$(AIRFLOW_DB_NAME)"
+            # S3 로깅을 위한 AWS 자격 증명 (IRSA 또는 KIAM 사용 시 불필요)
+            # - name: AWS_ACCESS_KEY_ID
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: aws-credentials
+            #       key: aws_access_key_id
+            # - name: AWS_SECRET_ACCESS_KEY
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: aws-credentials
+            #       key: aws_secret_access_key
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "500m"
+            limits:
+              memory: "2Gi"
+              cpu: "1"
+          volumeMounts:
+            - name: dags-volume
+              mountPath: /opt/airflow/dags
+            - name: logs-volume
+              mountPath: /opt/airflow/logs
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: web
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            httpGet:
+              path: /health
+              port: web
+            initialDelaySeconds: 120
+            periodSeconds: 20
+            timeoutSeconds: 10
+            failureThreshold: 5
+        - name: git-sync
+          image: k8s.gcr.io/git-sync/git-sync:v3.6.3 # 최신 안정 버전 확인 권장
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: GIT_SYNC_REPO
+              value: "git@github.com:YOUR_USERNAME/YOUR_DAGS_REPO.git" # <<< SSH 형태의 Git 리포지토리 URL로 변경
+            - name: GIT_SYNC_BRANCH
+              value: "main" # 또는 사용하려는 브랜치
+            - name: GIT_SYNC_DEST
+              value: "/dags" # 마운트된 dags-volume 내부의 서브디렉토리 (또는 루트)
+            - name: GIT_SYNC_ROOT
+              value: "/git-sync" # 컨테이너 내부 작업 경로
+            - name: GIT_SYNC_WAIT
+              value: "60" # 동기화 주기 (초)
+            - name: GIT_SYNC_SSH
+              value: "true" # SSH 사용 명시
+            - name: GIT_SSH_KEY_FILE
+              value: "/etc/git-secret/sshPrivateKey" # 마운트된 SSH 키 경로
+            # - name: GIT_SYNC_KNOWN_HOSTS
+            #   value: "true" # known_hosts 파일을 사용하려면 (Secret에 포함 필요)
+          securityContext:
+            runAsUser: 65533 # git-sync 이미지의 non-root 사용자
+            runAsGroup: 65533
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: dags-volume
+              mountPath: /git-sync # GIT_SYNC_ROOT와 일치
+            - name: git-ssh-key
+              mountPath: /etc/git-secret
+              readOnly: true
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: airflow-scheduler
+  namespace: news-platform
+  labels:
+    app: airflow
+    component: scheduler
+spec:
+  replicas: 1 # 스케줄러 레플리카 수 (Airflow 2.0+에서는 HA를 위해 2개 이상 가능)
+  selector:
+    matchLabels:
+      app: airflow
+      component: scheduler
+  template:
+    metadata:
+      labels:
+        app: airflow
+        component: scheduler
+    spec:
+      serviceAccountName: airflow-scheduler # RBAC에서 정의한 서비스 계정
+      securityContext:
+        runAsUser: 50000 # Airflow 이미지 사용자 ID
+        fsGroup: 0       # Git-Sync 및 pod_template.yaml 마운트 권한 문제 방지용
+      volumes:
+        - name: dags-volume
+          emptyDir: {}
+        - name: logs-volume
+          emptyDir: {}
+        - name: pod-template-volume
+          configMap:
+            name: airflow-pod-template # airflow-pod-template-configmap.yaml에서 생성한 ConfigMap
+            items:
+              - key: pod_template.yaml
+                path: pod_template.yaml # 마운트될 파일 이름
+        - name: git-ssh-key
+          secret:
+            secretName: git-ssh-secret
+            defaultMode: 0400
+      containers:
+        - name: airflow-scheduler
+          image: apache/airflow:2.10.5-python3.11
+          imagePullPolicy: IfNotPresent
+          command: ["airflow", "scheduler"]
+          envFrom:
+            - configMapRef:
+                name: airflow-config
+            - secretRef:
+                name: airflow-postgres-secret
+          env:
+            - name: AIRFLOW__CORE__SQL_ALCHEMY_CONN
+              value: "postgresql+psycopg2://$(AIRFLOW_DB_USER):$(AIRFLOW_DB_PASSWORD)@airflow-postgres:5432/$(AIRFLOW_DB_NAME)"
+            # S3 로깅을 위한 AWS 자격 증명 (필요시)
+          resources:
+            requests:
+              memory: "2Gi"
+              cpu: "1"
+            limits:
+              memory: "4Gi"
+              cpu: "2"
+          volumeMounts:
+            - name: dags-volume
+              mountPath: /opt/airflow/dags
+            - name: logs-volume
+              mountPath: /opt/airflow/logs
+            - name: pod-template-volume
+              mountPath: /opt/airflow/pod_templates # AIRFLOW__KUBERNETES__POD_TEMPLATE_FILE 경로와 일치하는 디렉토리
+              readOnly: true
+          readinessProbe:
+            exec:
+              command:
+                - "/bin/bash"
+                - "-c"
+                - "airflow jobs check --job-type SchedulerJob --hostname $(hostname)"
+            initialDelaySeconds: 60
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          livenessProbe:
+            exec:
+              command:
+                - "/bin/bash"
+                - "-c"
+                - "airflow jobs check --job-type SchedulerJob --hostname $(hostname)"
+            initialDelaySeconds: 120
+            periodSeconds: 20
+            timeoutSeconds: 10
+            failureThreshold: 5
+        - name: git-sync
+          image: k8s.gcr.io/git-sync/git-sync:v3.6.3
+          imagePullPolicy: IfNotPresent
+          env:
+            - name: GIT_SYNC_REPO
+              value: "git@github.com:YOUR_USERNAME/YOUR_DAGS_REPO.git" # <<< 웹서버와 동일한 리포지토리
+            - name: GIT_SYNC_BRANCH
+              value: "main"
+            - name: GIT_SYNC_DEST
+              value: "/dags"
+            - name: GIT_SYNC_ROOT
+              value: "/git-sync"
+            - name: GIT_SYNC_WAIT
+              value: "60"
+            - name: GIT_SYNC_SSH
+              value: "true"
+            - name: GIT_SSH_KEY_FILE
+              value: "/etc/git-secret/sshPrivateKey"
+          securityContext:
+            runAsUser: 65533
+            runAsGroup: 65533
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+          volumeMounts:
+            - name: dags-volume
+              mountPath: /git-sync
+            - name: git-ssh-key
+              mountPath: /etc/git-secret
+              readOnly: true 

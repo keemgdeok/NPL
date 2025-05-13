@@ -1,0 +1,53 @@
+# 전역 설정
+run_mode: "stream"  # 'stream' 또는 'batch'
+log_level: "INFO"   # DEBUG, INFO, WARNING, ERROR, CRITICAL
+# model_path: null # 로컬 모델 경로 (지정하지 않으면 TextSummarizer의 기본 모델 사용)
+# model_path: "/path/to/your/local_model_directory" # 예시
+
+# 요약 파라미터 (TextSummarizer 및 SummaryProcessor에 적용)
+summary_parameters:
+  # TextSummarizer 기본 모델 (model_path가 None일 경우 사용)
+  default_model_name: "eenzeenee/t5-base-korean-summarization"
+  input_max_length: 1024
+  summary_min_length: 30
+  summary_max_length: 150 # processor.py에서 사용하던 값
+  num_beams: 4
+  do_sample: false # processor.py에서 사용하던 값 (TextSummarizer 기본은 True)
+  
+
+# Kafka 기본 설정 (기존 NCloudConfig 역할 대체)
+kafka_settings:
+  bootstrap_servers: "localhost:9092"  # 실제 사용하는 Kafka 브로커 주소로 변경 필요
+  topic_prefix: "news"          # 실제 사용하는 토픽 접두사로 변경 필요
+  # 사용 가능한 전체 뉴스 카테고리 목록 (key: 내부 ID, value: 표시 이름 또는 설명)
+  # 이 카테고리 목록을 기반으로 토픽 이름이 생성됩니다.
+  available_categories:
+    economy: "경제"
+    society: "사회"
+    politics: "정치"
+    world: "국제"
+    culture: "문화"
+    it: "IT"
+    # ... 기타 필요한 카테고리 추가 ...
+
+# Kafka 스트리밍 관련 설정
+kafka_stream_settings:
+  # categories: null # 처리할 카테고리 목록. null이면 kafka_settings.available_categories 전체 사용.
+  # categories: ["news", "economy"] # 예시: 여기서 지정한 카테고리만 스트리밍 처리
+  group_id: "summary-processor-group-main" # 기본 그룹 ID
+  idle_timeout_sec: 60
+  gpu_batch_size: 8
+  gpu_batch_timeout_sec: 5
+  consumer_request_timeout_ms: 15000 # 스트림 컨슈머용 기본값 15초
+
+# Kafka 배치 처리 관련 설정
+kafka_batch_settings:
+  # category: null # 단일 카테고리 지정. null이면 kafka_stream_settings.categories 또는 전체 available_categories 대상.
+  # category: "sports" # 예시
+  read_timeout_ms: 10000
+  consumer_request_timeout_ms: 15000 # 배치 컨슈머용 기본값 15초
+
+# Kafka Producer 추가 설정 (필요시, 기본값 오버라이드)
+# kafka_producer_override:
+#   request_timeout_ms: 35000
+#   max_block_ms: 35000

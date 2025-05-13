@@ -1,0 +1,108 @@
+# MongoDB Headless Service (StatefulSet의 각 Pod에 직접 접근하기 위함)
+apiVersion: v1
+kind: Service
+metadata:
+  name: mongodb-svc # 애플리케이션에서 MongoDB에 연결 시 사용할 서비스 이름
+  namespace: news-platform
+  labels:
+    app: mongodb
+spec:
+  ports:
+    - port: 27017 # MongoDB 기본 포트
+      targetPort: 27017
+      name: mongo
+  clusterIP: None # Headless Service로 설정
+  selector:
+    app: mongodb # MongoDB StatefulSet의 Pod들을 선택
+---
+# MongoDB StatefulSet 정의
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: mongodb
+  namespace: news-platform
+  labels:
+    app: mongodb
+spec:
+  serviceName: mongodb-svc # 위에서 정의한 Headless Service 이름
+  replicas: 1 # 단일 MongoDB 인스턴스 (복제 세트 구성 시 3개 이상 권장)
+  selector:
+    matchLabels:
+      app: mongodb
+  template:
+    metadata:
+      labels:
+        app: mongodb
+    spec:
+      # terminationGracePeriodSeconds: 10 # Pod 종료 유예 시간 (선택 사항)
+      securityContext:
+        fsGroup: 999 # MongoDB 이미지의 mongodb 사용자 그룹 ID (이미지 문서 확인 필요, 예: bitnami/mongodb는 1001)
+                     # 공식 mongo 이미지는 root로 실행 후 내부적으로 mongodb 사용자로 전환할 수 있음. 이 경우 fsGroup이 필요 없을 수도 있음.
+      containers:
+        - name: mongodb
+          image: mongo:latest # 또는 특정 버전 명시 (예: mongo:6.0)
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 27017
+              name: mongo
+          env:
+            - name: MONGO_INITDB_ROOT_USERNAME
+              value: "root" # MongoDB 내부의 루트 사용자 이름 (고정값 또는 Secret에서 가져올 수도 있음)
+            - name: MONGO_INITDB_ROOT_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: mongodb-secret
+                  key: mongo-root-password
+            # 애플리케이션용 사용자를 자동으로 생성하려면 아래 환경 변수 사용 가능 (Secret에 해당 키 필요)
+            # - name: MONGO_INITDB_DATABASE
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: mongodb-secret
+            #       key: mongo-database-name
+            # - name: MONGO_INITDB_USERNAME
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: mongodb-secret
+            #       key: mongo-app-user 
+            # - name: MONGO_INITDB_PASSWORD
+            #   valueFrom:
+            #     secretKeyRef:
+            #       name: mongodb-secret
+            #       key: mongo-app-password
+          resources:
+            requests:
+              memory: "1Gi"
+              cpu: "500m"
+            limits:
+              memory: "2Gi"
+              cpu: "1"
+          volumeMounts:
+            - name: mongodb-data
+              mountPath: /data/db # MongoDB 데이터 디렉토리
+          livenessProbe:
+            tcpSocket:
+              port: mongo
+            initialDelaySeconds: 30
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+          readinessProbe:
+            exec:
+              command:
+                - mongo
+                - --eval
+                - "db.adminCommand('ping')"
+            initialDelaySeconds: 5
+            periodSeconds: 10
+            timeoutSeconds: 5
+            failureThreshold: 3
+  # MongoDB 데이터를 저장하기 위한 영구 볼륨 요청 템플릿
+  volumeClaimTemplates:
+    - metadata:
+        name: mongodb-data # volumeMounts의 name과 일치
+      spec:
+        accessModes: ["ReadWriteOnce"] # 단일 MongoDB 인스턴스이므로 RWO 사용
+        storageClassName: "standard" # 클러스터에 구성된 기본 StorageClass 사용 (또는 특정 SC 지정)
+        resources:
+          requests:
+            storage: 30Gi # MongoDB 데이터에 필요한 스토리지 크기 
