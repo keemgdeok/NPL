@@ -29,4 +29,4 @@ ENV KAFKA_CONNECTION_RETRY=5
 ENV KAFKA_CONNECTION_RETRY_DELAY=5
 
 # 실행 명령
-CMD ["python", "-m", "src.collectors.run_collector", "--kafka-servers=kafka:29092", "--interval=3600"] 
+CMD ["python", "-m", "src.collectors.run_collector", "--kafka-servers=kafka:29092", "--run-once"] 

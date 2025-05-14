@@ -102,6 +102,23 @@ services:
     networks:
       - npl-network
 
+  consumer-mongodb:
+    build:
+      context: .
+      dockerfile: docker/consumer_mongodb.Dockerfile
+    container_name: npl-consumer-mongodb
+    depends_on:
+      - mongodb
+    environment:
+      - KAFKA_BROKER_URLS_FOR_CONSUMER=kafka:29092
+      - KAFKA_CONSUMER_GROUP_ID_MONGO=mongo_processor_group
+      # - KAFKA_TOPIC_PATTERN_MONGO_PROCESSOR="^news\\.[a-zA-Z0-9_-]+\\.(processed|sentiment|summary)$"
+      - DATABASE_NAME_MONGO_PROCESSOR=news_db
+      - MONGODB_URI=mongodb://mongodb:27017
+    networks:
+      - news-pipeline
+    restart: unless-stopped
+
   # API 서버
   # api:
   #   build:

@@ -43,16 +43,6 @@ class SummaryProcessor:
             retries=5,
             retry_backoff_ms=1000             # 1초 간격으로 재시도
         )
-        
-        # MongoDB 설정
-        self.mongo_client = MongoClient(Config.MONGODB_URI)
-        self.db = self.mongo_client[Config.DATABASE_NAME]
-        self.collection = self.db['summary_articles']
-        
-        # 인덱스 생성
-        self.collection.create_index([("url", 1)], unique=True)
-        self.collection.create_index([("category", 1), ("published_at", -1)])
-        self.collection.create_index([("summary_info.summary_length", 1)])
     
     def process_article(self, article_data: Dict[str, Any]) -> Dict[str, Any]:
         """기사 요약 수행
@@ -135,9 +125,6 @@ class SummaryProcessor:
                                 
                                 # 요약 수행
                                 processed_data = self.process_article(article_data)
-                                
-                                # MongoDB에 저장
-                                self._save_to_mongodb(processed_data)
                                 
                                 # 처리된 데이터를 다음 단계로 전송
                                 self._send_to_kafka(processed_data, category)
@@ -233,5 +220,4 @@ class SummaryProcessor:
         """리소스 정리"""
         self.consumer.close()
         self.producer.close()
-        self.mongo_client.close()
         logger.info("모든 리소스가 정리되었습니다.") 

@@ -7,8 +7,8 @@ import logging
 import time
 from .analyzer import SentimentAnalyzer
 from ...collectors.utils.config import Config
-from ...common.database.repositories.article_repository import SentimentArticleRepository
-from ...common.database.exceptions import OperationError
+# from ...common.database.repositories.article_repository import SentimentArticleRepository # 삭제
+# from ...common.database.exceptions import OperationError # 삭제
 
 logger = logging.getLogger("sentiment-processor")
 
@@ -17,8 +17,8 @@ class SentimentProcessor:
         # KR-FinBert-SC 금융 도메인 특화 감성분석 모델 사용
         self.analyzer = SentimentAnalyzer(model_path=model_path)
         
-        # Repository 초기화
-        self.repository = SentimentArticleRepository()
+        # Repository 초기화 # 삭제
+        # self.repository = SentimentArticleRepository() # 삭제
         
         # Kafka 설정 - 모든 카테고리의 processed 토픽 구독
         processed_topics = [f"{Config.KAFKA_TOPIC_PREFIX}.{category}.processed" 
@@ -57,37 +57,14 @@ class SentimentProcessor:
             Dict: 감성 분석 결과가 추가된 기사 데이터
         """
         try:
-            # 처리된 내용으로 감성 분석
-            processed_content = article_data["processed_content"]
+            # 원본 내용으로 감성 분석
+            original_content = article_data["content"]
             
             # 전체 내용에 대한 감성 분석
-            overall_sentiment = self.analyzer.analyze(processed_content)
+            overall_sentiment = self.analyzer.analyze(original_content)
             
-            # 문단별 감성 분석 (내용을 문단으로 나누기)
-            paragraphs = processed_content.split("\n\n")
-            paragraph_sentiments = []
-            
-            for i, paragraph in enumerate(paragraphs):
-                # 빈 문단 건너뛰기
-                if not paragraph.strip():
-                    continue
-                    
-                # 최소 20자 이상인 문단만 분석
-                if len(paragraph) < 20:
-                    continue
-                    
-                sentiment = self.analyzer.analyze(paragraph)
-                paragraph_sentiments.append({
-                    "paragraph_index": i,
-                    "text": paragraph[:100] + "..." if len(paragraph) > 100 else paragraph,
-                    "sentiment": sentiment
-                })
-            
-            # 감성 분석 결과 추가
-            article_data["sentiment_analysis"] = {
-                "overall_sentiment": overall_sentiment,
-                "paragraph_sentiments": paragraph_sentiments
-            }
+            # 감성 분석 결과 추가 (구조 변경)
+            article_data["sentiment_analysis"] = overall_sentiment
             
             # 감성 분석 시간 추가
             article_data["sentiment_processed_at"] = datetime.now().isoformat()
@@ -96,10 +73,10 @@ class SentimentProcessor:
             
         except Exception as e:
             logger.error(f"감성 분석 오류: {str(e)}")
-            # 에러 발생 시 최소한의 감성 분석 결과 추가
+            # 에러 발생 시 최소한의 감성 분석 결과 추가 (구조 및 기본값 변경)
             article_data["sentiment_analysis"] = {
-                "overall_sentiment": {"sentiment": "neutral", "score": 0.5, "confidence": 0.0},
-                "paragraph_sentiments": [],
+                "sentiment": "neutral",
+                "scores": {"negative": 0.0, "neutral": 1.0, "positive": 0.0}, # KR-FinBert-SC 출력 형식에 맞춘 기본값
                 "error": str(e)
             }
             article_data["sentiment_processed_at"] = datetime.now().isoformat()
@@ -121,23 +98,7 @@ class SentimentProcessor:
                     
                     # 기사 감성 분석
                     analyzed_data = self.analyze_article(article_data)
-                    logger.info(f"감성 분석 완료: {analyzed_data['title']} (감성: {analyzed_data['sentiment_analysis']['overall_sentiment']['sentiment']})")
-                    
-                    # MongoDB에 저장 - 저장소 패턴 사용 및 예외 처리 추가
-                    try:
-                        from ...common.database.models import SentimentArticleModel, model_to_doc, doc_to_model
-                        
-                        # 데이터 모델로 변환하여 유효성 검사
-                        sentiment_model = doc_to_model(analyzed_data, SentimentArticleModel)
-                        
-                        # 저장소에 저장
-                        self.repository.save_article(sentiment_model)
-                        logger.info(f"MongoDB 저장 완료: {analyzed_data['title']}")
-                    except OperationError as e:
-                        logger.error(f"MongoDB 저장 오류: {e.message}")
-                        if e.original_error:
-                            logger.debug(f"원본 오류: {str(e.original_error)}")
-                        # 저장 실패시에도 Kafka로 전송은 진행
+                    logger.info(f"감성 분석 완료: {analyzed_data['title']} (감성: {analyzed_data['sentiment_analysis']['sentiment']})")
                     
                     # 처리된 데이터를 다음 단계로 전송
                     self._send_to_kafka(analyzed_data, category)
@@ -151,76 +112,6 @@ class SentimentProcessor:
             logger.info("사용자에 의해 처리가 중단되었습니다.")
         finally:
             self.close()
-    
-    def process_batch(self, category: str = None, days: int = 1, limit: int = 100):
-        """배치 처리
-        
-        Args:
-            category: 특정 카테고리만 처리 (선택적)
-            days: 최근 며칠 동안의 기사만 처리 (기본값: 1)
-            limit: 최대 처리 건수 (기본값: 100)
-        """
-        from ...common.database.repositories.article_repository import ProcessedArticleRepository
-        from ...common.database.models import SentimentArticleModel, model_to_doc, doc_to_model
-        
-        processed_repo = ProcessedArticleRepository()
-        
-        # 쿼리 구성
-        query = {}
-        if category:
-            query["category"] = category
-            
-        start_date = datetime.now() - timedelta(days=days)
-        query["processed_at"] = {"$gte": start_date.isoformat()}
-        
-        # 이미 감성 분석된 기사는 제외
-        query_with_join = [
-            {
-                "$lookup": {
-                    "from": "sentiment_articles",
-                    "localField": "url",
-                    "foreignField": "url",
-                    "as": "sentiment"
-                }
-            },
-            {"$match": {"sentiment": {"$size": 0}}},
-            {"$limit": limit}
-        ]
-        
-        try:
-            # 집계 파이프라인 실행
-            articles = processed_repo.aggregate(query_with_join)
-            
-            for article_data in articles:
-                try:
-                    # 감성 분석
-                    analyzed_data = self.analyze_article(article_data)
-                    
-                    try:
-                        # 모델로 변환하여 유효성 검사
-                        sentiment_model = doc_to_model(analyzed_data, SentimentArticleModel)
-                        
-                        # MongoDB에 저장 - 저장소 패턴 사용
-                        self.repository.save_article(sentiment_model)
-                        logger.info(f"MongoDB 저장 완료: {analyzed_data['title']}")
-                    except OperationError as e:
-                        logger.error(f"MongoDB 저장 오류: {e.message}")
-                        if e.original_error:
-                            logger.debug(f"원본 오류: {str(e.original_error)}")
-                        # 저장 실패시에도 Kafka로 전송은 진행
-                    
-                    # Kafka로 전송
-                    self._send_to_kafka(analyzed_data, article_data["category"])
-                    
-                    logger.info(f"배치 처리 완료: {analyzed_data['title']}")
-                except Exception as e:
-                    logger.error(f"기사 처리 오류: {str(e)}")
-                    continue
-        except OperationError as e:
-            logger.error(f"기사 조회 오류: {e.message}")
-            if e.original_error:
-                logger.debug(f"원본 오류: {str(e.original_error)}")
-            return
     
     def _send_to_kafka(self, data: Dict[str, Any], category: str):
         """처리된 데이터를 Kafka로 전송
