@@ -8,7 +8,6 @@ import logging
 from .preprocessor import TextPreprocessor
 from ...collectors.utils.config import Config
 from ...collectors.utils.models import NewsArticle
-from ...common.database.repositories.article_repository import ProcessedArticleRepository
 
 # 로깅 설정
 logging.basicConfig(level=logging.INFO)
@@ -17,9 +16,6 @@ logger = logging.getLogger(__name__)
 class TextProcessor:
     def __init__(self):
         self.preprocessor = TextPreprocessor()
-        
-        # Repository 초기화
-        self.repository = ProcessedArticleRepository()
         
         # Kafka 연결 재시도 설정
         retries = 0
@@ -75,7 +71,7 @@ class TextProcessor:
         # 3. 처리된 데이터 생성
         processed_data = article.to_dict()
         processed_data.update({
-            "processed_content": processed_content,
+            # "processed_content": processed_content,
             "keywords": keywords,
             "processed_at": datetime.now().isoformat()
         })
@@ -98,10 +94,6 @@ class TextProcessor:
                     processed_data = self.process_article(article)
                     logger.info(f"기사 처리 완료: {processed_data['title']}")
                     
-                    # MongoDB에 저장 (Repository 패턴 사용)
-                    self.repository.save_article(processed_data)
-                    logger.info(f"MongoDB 저장 완료: {processed_data['title']}")
-                    
                     # 처리된 데이터를 다음 단계로 전송
                     self._send_to_kafka(processed_data)
                     logger.info(f"Kafka 전송 완료: {processed_data['title']} -> naver-news-processed")
@@ -115,53 +107,6 @@ class TextProcessor:
         finally:
             self.close()
     
-    def process_batch(self, category: str = None, days: int = 1):
-        """MongoDB에서 데이터를 배치로 처리"""
-        from ...common.database.repositories.article_repository import RawArticleRepository
-        
-        raw_repo = RawArticleRepository()
-        
-        if category:
-            articles = raw_repo.get_articles_by_category(category, days=days)
-        else:
-            # 모든 카테고리 처리
-            articles = []
-            for category in Config.CATEGORIES.keys():
-                articles.extend(raw_repo.get_articles_by_category(category, days=days))
-        
-        for article_data in articles:
-            try:
-                article = NewsArticle.from_dict(article_data)
-                processed_data = self.process_article(article)
-                self.repository.save_article(processed_data)
-                self._send_to_kafka(processed_data)
-                logger.info(f"배치 처리 완료: {processed_data['title']}")
-            except Exception as e:
-                logger.error(f"기사 처리 오류: {str(e)}")
-                continue
-    
-    def _send_to_kafka(self, data: Dict[str, Any]):
-        """처리된 데이터를 Kafka로 전송"""
-        try:
-            # 토픽 이름 생성 (예: news.economy.processed)
-            topic = f"news.{data['category']}.processed"
-            
-            # Kafka로 전송
-            self.producer.send(
-                topic,
-                value=data
-            )
-            logger.info(f"Sent to Kafka: {data['title']} -> {topic}")
-            
-        except Exception as e:
-            logger.error(f"Error sending to Kafka: {str(e)}")
-    
-    def close(self):
-        """리소스 정리"""
-        self.consumer.close()
-        self.producer.close()
-        # Repository는 자동으로 정리됨
-
     def process_stream_once(self):
         """스트림에서 메시지를 한 번만 처리하고 종료"""
         logger.info("일회성 메시지 처리를 시작합니다...")
@@ -189,10 +134,6 @@ class TextProcessor:
                     processed_data = self.process_article(article)
                     logger.info(f"기사 처리 완료: {processed_data['title']}")
                     
-                    # MongoDB에 저장
-                    self.repository.save_article(processed_data)
-                    logger.info(f"MongoDB 저장 완료: {processed_data['title']}")
-                    
                     # 처리된 데이터를 다음 단계로 전송
                     self._send_to_kafka(processed_data)
                     logger.info(f"Kafka 전송 완료: {processed_data['title']} -> news.{processed_data['category']}.processed")
@@ -204,3 +145,24 @@ class TextProcessor:
         # 처리한 offset commit
         self.consumer.commit()
         logger.info("일회성 메시지 처리를 완료했습니다.") 
+    
+    def _send_to_kafka(self, data: Dict[str, Any]):
+        """처리된 데이터를 Kafka로 전송"""
+        try:
+            # 토픽 이름 생성 (예: news.economy.processed)
+            topic = f"news.{data['category']}.processed"
+            
+            # Kafka로 전송
+            self.producer.send(
+                topic,
+                value=data
+            )
+            logger.info(f"Sent to Kafka: {data['title']} -> {topic}")
+            
+        except Exception as e:
+            logger.error(f"Error sending to Kafka: {str(e)}")
+    
+    def close(self):
+        """리소스 정리"""
+        self.consumer.close()
+        self.producer.close() 

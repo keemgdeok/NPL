@@ -11,7 +11,7 @@ services:
       - zookeeper-data:/var/lib/zookeeper/data
       - zookeeper-log:/var/lib/zookeeper/log
     networks:
-      - npl-network
+      - news-pipeline
 
     
   kafka:
@@ -37,7 +37,7 @@ services:
       - kafka-data:/var/lib/kafka/data
       - ./config:/etc/kafka/config:ro
     networks:
-      - npl-network
+      - news-pipeline
 
   kafka-ui:
     image: provectuslabs/kafka-ui:latest
@@ -51,7 +51,7 @@ services:
       KAFKA_CLUSTERS_0_BOOTSTRAPSERVERS: kafka:29092
       KAFKA_CLUSTERS_0_ZOOKEEPER: zookeeper:2181
     networks:
-      - npl-network
+      - news-pipeline
 
   kafka-topics-generator:
     image: confluentinc/cp-kafka:latest
@@ -68,7 +68,7 @@ services:
         echo 'Creating topics...' &&
         /scripts/create_topics.sh"
     networks:
-      - npl-network
+      - news-pipeline
 
 
 volumes:
@@ -77,6 +77,6 @@ volumes:
   kafka-data:
 
 networks:
-  npl-network:
+  news-pipeline:
     external: true
-    name: npl-network
+    name: news-pipeline

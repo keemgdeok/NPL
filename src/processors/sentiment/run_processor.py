@@ -21,12 +21,8 @@ def main():
         return
     
     parser = argparse.ArgumentParser(description='금융 뉴스 감정 분석기 (KR-FinBert-SC 모델 사용)')
-    parser.add_argument('--mode', choices=['stream', 'batch'], default='stream',
-                      help='처리 모드 선택 (stream: 실시간, batch: 배치)')
-    parser.add_argument('--category', type=str, choices=list(Config.CATEGORIES.keys()),
-                      help=f'처리할 카테고리 (배치 모드에서만 사용). 선택 가능: {", ".join(Config.CATEGORIES.keys())}')
-    parser.add_argument('--days', type=int, default=1,
-                      help='처리할 기간 (일 단위, 배치 모드에서만 사용)')
+    parser.add_argument('--mode', choices=['stream'], default='stream',
+                      help='처리 모드 선택 (stream: 실시간)')
     parser.add_argument('--model-path', type=str, default='models/kr-finbert-sc',
                       help='로컬에 저장된 모델 경로 (없으면 Hugging Face에서 다운로드)')
     parser.add_argument('--list-topics', action='store_true',
@@ -75,7 +71,7 @@ def main():
             if args.idle_timeout:
                 logger.info(f"자동 종료 설정: {args.idle_timeout}초 동안 메시지 없으면 종료")
             logger.info(f"다음 토픽들을 구독합니다: {', '.join([f'{Config.KAFKA_TOPIC_PREFIX}.{c}.processed' for c in Config.CATEGORIES])}")
-            processor.process_stream(idle_timeout_sec=args.idle_timeout)
+            processor.process_stream()
         else:
             logger.info(f"배치 처리 모드 시작 - 최근 {args.days}일 데이터 처리...")
             if args.category:
