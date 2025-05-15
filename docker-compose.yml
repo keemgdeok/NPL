@@ -8,7 +8,7 @@ services:
     volumes:
       - mongodb_data:/data/db
     networks:
-      - npl-network
+      - news-pipeline
 
   # 뉴스 수집기
   collector:
@@ -23,7 +23,7 @@ services:
       - MONGODB_URI=mongodb://mongodb:27017
       - DATABASE_NAME=news_db
     networks:
-      - npl-network
+      - news-pipeline
 
   # S3 저장 관리자
   storage:
@@ -41,7 +41,7 @@ services:
       - STORAGE_FLUSH_INTERVAL=60
       - STORAGE_MAX_WORKERS=5
     networks:
-      - npl-network
+      - news-pipeline
 
   # 텍스트 처리기
   text-processor:
@@ -56,7 +56,7 @@ services:
       - MONGODB_URI=mongodb://mongodb:27017
       - DATABASE_NAME=news_db
     networks:
-      - npl-network
+      - news-pipeline
       
   # 감정 분석 처리기
   sentiment-processor:
@@ -78,7 +78,7 @@ services:
       - MONGODB_URI=mongodb://mongodb:27017
       - DATABASE_NAME=news_db
     networks:
-      - npl-network
+      - news-pipeline
       
   # 요약 처리기
   summary-processor:
@@ -100,7 +100,7 @@ services:
       - MONGODB_URI=mongodb://mongodb:27017
       - DATABASE_NAME=news_db
     networks:
-      - npl-network
+      - news-pipeline
 
   consumer-mongodb:
     build:
@@ -112,7 +112,7 @@ services:
     environment:
       - KAFKA_BROKER_URLS_FOR_CONSUMER=kafka:29092
       - KAFKA_CONSUMER_GROUP_ID_MONGO=mongo_processor_group
-      # - KAFKA_TOPIC_PATTERN_MONGO_PROCESSOR="^news\\.[a-zA-Z0-9_-]+\\.(processed|sentiment|summary)$"
+      # - KAFKA_TOPIC_PATTERN_MONGO_PROCESSOR="^news\\\\.[a-zA-Z0-9_-]+\\\\.(processed|sentiment|summary)$"
       - DATABASE_NAME_MONGO_PROCESSOR=news_db
       - MONGODB_URI=mongodb://mongodb:27017
     networks:
@@ -135,7 +135,7 @@ services:
   #     - API_HOST=0.0.0.0
   #     - API_PORT=8000
   #   networks:
-  #     - npl-network
+  #     - news-pipeline
 
   # 대시보드
   # dashboard:
@@ -150,16 +150,12 @@ services:
   #   environment:
   #     - API_URL=http://api:8000
   #   networks:
-  #     - npl-network
+  #     - news-pipeline
 
-# networks:
-#   npl-network:
-#     driver: bridge
-#     name: npl-network
 networks:
-  npl-network:
-    external: true
-    name: npl-network
+  news-pipeline:
+    driver: bridge # 명시적으로 bridge 드라이버 사용 또는 기본값 사용
+    name: news-pipeline # 생성하거나 연결할 네트워크 이름
 
 volumes:
   mongodb_data: 
