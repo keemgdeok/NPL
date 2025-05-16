@@ -7,13 +7,19 @@ class TopicAnalysis(BaseModel):
     main_topics: List[int]
     topic_keywords: List[List[str]]
 
+    model_config = {"from_attributes": True}
+
 class SentimentScores(BaseModel):
     sentiment: str
     scores: Dict[str, float]
 
+    model_config = {"from_attributes": True}
+
 class SentimentAnalysis(BaseModel):
     overall_sentiment: SentimentScores
     sentiment_keywords: Dict[str, List[str]]
+
+    model_config = {"from_attributes": True}
 
 class NewsArticle(BaseModel):
     url: str
@@ -28,11 +34,15 @@ class NewsArticle(BaseModel):
     topic_analysis: Optional[TopicAnalysis] = None
     sentiment_analysis: Optional[SentimentAnalysis] = None
 
+    model_config = {"from_attributes": True}
+
 class NewsResponse(BaseModel):
     total: int
     page: int
     size: int
     articles: List[NewsArticle]
+
+    model_config = {"from_attributes": True}
 
 class TopicSummary(BaseModel):
     topic_id: int
@@ -40,16 +50,22 @@ class TopicSummary(BaseModel):
     article_count: int
     sentiment_distribution: Dict[str, int]
 
+    model_config = {"from_attributes": True}
+
 class CategorySummary(BaseModel):
     category: str
     article_count: int
     sentiment_distribution: Dict[str, int]
     top_topics: List[TopicSummary]
 
+    model_config = {"from_attributes": True}
+
 class StatsSummary(BaseModel):
     total_articles: int
     categories: List[CategorySummary]
     time_range: Dict[str, datetime] 
+
+    model_config = {"from_attributes": True}
 
 # 추가: 시간별 분석을 위한 모델
 class TimePoint(BaseModel):
@@ -57,6 +73,8 @@ class TimePoint(BaseModel):
     timestamp: datetime
     count: int
     metadata: Optional[Dict[str, Any]] = None
+
+    model_config = {"from_attributes": True}
 
 class TimelineResponse(BaseModel):
     """시간별 분석 응답"""
@@ -67,6 +85,8 @@ class TimelineResponse(BaseModel):
     total: int
     time_range: Dict[str, datetime]
 
+    model_config = {"from_attributes": True}
+
 # 추가: 감성 분석 트렌드를 위한 모델
 class SentimentTimePoint(BaseModel):
     """감성 분석 시간별 데이터 포인트"""
@@ -76,6 +96,8 @@ class SentimentTimePoint(BaseModel):
     negative: int = 0
     total: int = 0
 
+    model_config = {"from_attributes": True}
+
 class SentimentTrendResponse(BaseModel):
     """감성 분석 트렌드 응답"""
     interval: str  # 'hour', 'day', 'week'
@@ -83,6 +105,8 @@ class SentimentTrendResponse(BaseModel):
     category: Optional[str] = None
     total: int
     time_range: Dict[str, datetime]
+
+    model_config = {"from_attributes": True}
 
 # 추가: 키워드 분석을 위한 모델
 class KeywordInfo(BaseModel):
@@ -92,12 +116,16 @@ class KeywordInfo(BaseModel):
     score: float  # 중요도 점수 (예: TF-IDF)
     sentiment_distribution: Optional[Dict[str, int]] = None
 
+    model_config = {"from_attributes": True}
+
 class TrendingKeywordsResponse(BaseModel):
     """트렌딩 키워드 응답"""
     keywords: List[KeywordInfo]
     category: Optional[str] = None
     total_articles: int
     time_range: Dict[str, datetime]
+
+    model_config = {"from_attributes": True}
 
 # 추가: 키워드 네트워크를 위한 모델
 class KeywordNode(BaseModel):
@@ -107,11 +135,15 @@ class KeywordNode(BaseModel):
     size: int = 1
     score: float = 1.0
 
+    model_config = {"from_attributes": True}
+
 class KeywordEdge(BaseModel):
     """키워드 네트워크 엣지"""
     source: str
     target: str
     weight: float
+
+    model_config = {"from_attributes": True}
 
 class KeywordNetworkResponse(BaseModel):
     """키워드 네트워크 응답"""
@@ -120,6 +152,8 @@ class KeywordNetworkResponse(BaseModel):
     root_keyword: str
     depth: int
     time_range: Dict[str, datetime]
+
+    model_config = {"from_attributes": True}
 
 # 추가: 검색 요청을 위한 모델
 class SearchRequest(BaseModel):
@@ -133,4 +167,6 @@ class SearchRequest(BaseModel):
     exclude_keywords: Optional[List[str]] = None
     press: Optional[List[str]] = None
     page: int = Field(1, ge=1)
-    size: int = Field(20, ge=1, le=100) 
+    size: int = Field(20, ge=1, le=100)
+
+    model_config = {"from_attributes": True} 
