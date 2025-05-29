@@ -11,30 +11,30 @@
 
 ## Tech Stack
 
-* **데이터 수집 및 스트리밍 (Data Ingestion & Streaming)**
+* **Data Ingestion & Streaming**
     * `Kafka`: 실시간 뉴스 데이터 스트리밍 및 이벤트 처리 플랫폼
 
-*   **데이터 오케스트레이션 (Data Orchestration)**
+*   **Data Orchestration**
     *   `Airflow`: 데이터 수집, 처리, 적재 파이프라인의 스케줄링 및 관리
 
-*   **데이터 처리 및 모델 추론 (Data Processing & Model Inference)**
+*   **Data Processing & Model Inference**
     *   `PyTorch`, `Hugging Face Transformers`: NLP 모델 (Mecab을 사용한 키워드 추출, 감성 분석, 문서 요약 등)의 추론
 
-*   **데이터 저장소 (Data Storage)**
+*   **Data Storage**
     *   `MongoDB`: 수집된 뉴스 기사, 분석 결과 등 NoSQL 데이터 저장
     *   `Elasticsearch`: 검색 및 집계 기능을 위한 데이터 저장 (필요시 추가)
 
-*   **API 서버 (API Server)**
+*   **API Server**
     *   `FastAPI`: 저장된 데이터 접근 및 외부 서비스 연동을 위한 API 서버
 
-*   **대시보드 및 시각화 (Dashboard & Visualization)**
+*   **Dashboard & Visualization**
     *   `Streamlit`: 분석된 데이터 및 파이프라인 현황 시각화를 위한 대시보드
 
-*   **컨테이너화 및 배포 (Containerization & Deployment)**
+*   **Containerization & Deployment**
     *   `Docker`: 각 서비스(수집기, 처리기, API, 대시보드 등)의 컨테이너화 및 일관된 실행 환경 제공
     *   `Docker Compose`: 로컬 환경에서 다중 컨테이너 애플리케이션 정의 및 실행
 
-*   **인프라 (Infrastructure)**
+*   **Infrastructure**
     *   `AWS (Lambda, VPC 등)`: 클라우드 기반 서비스 확장 (구현 예정)
     *   `Kubernetes (k8s)`: 컨테이너 오케스트레이션 (구현 예정)
 
@@ -135,14 +135,14 @@ news-pipeline/
 
 ## Future Enhancements
 
-* **클라우드 네이티브 아키텍처 전환**
-    *  `AWS` 서비스(`Lambda`, `VPC`) 및 `Kubernetes(k8s)`를 활용하여 확장성, 탄력성, 관리 효율성을 갖춘 클라우드 네이티브 환경으로 점진적 전환
+* **Cloud Native Architecture**
+    *  `AWS` 서비스(`Lambda`, `VPC`) 및 `Kubernetes(k8s)`를 활용하여 확장성, 탄력성, 관리 효율성을 갖춘 Cloud Native 환경으로 점진적 전환
  
-* **데이터 플랫폼 고도화**
-    * `Elasticsearch` 클러스터 최적화, `Kibana` 활용 심화, 데이터 백업/복구 전략 수립 및 `데이터 품질 관리` 시스템 도입
+* **Data Flatform 고도화**
+    * `Elasticsearch` 클러스터 최적화, `Kibana` 활용
  
-* **DevOps 및 MLOps 강화**
-    * `CI/CD 파이프라인` 구축, `IaC(Infrastructure as Code)` 확대, 통합 `모니터링 및 로깅 시스템` (`Prometheus`, `Grafana`, `ELK/EFK`) 구축
+* **DevOps 및 MLOps**
+    * `CI/CD 파이프라인` 구축, 통합 `모니터링 및 로깅 시스템` (`Prometheus`, `Grafana`, `ELK/EFK`) 구축
  
 * **서비스 안정성 및 보안 강화**
     * API 보안 강화, 데이터 암호화, 파이프라인 오류 처리 개선 및 정기적인 시스템 점검
