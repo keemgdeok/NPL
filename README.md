@@ -1,6 +1,6 @@
-# news-pipeline
+# 📰 news-pipeline
 
-## System-Architecture
+## 🛠️ System-Architecture
 
 <div>
     <img src="./assets/news-pipeline.png">
@@ -8,7 +8,7 @@
 
 <br>
 
-## Tech Stack
+## 🔧 Tech Stack
 *   **Data Ingestion & Streaming**
     *   `Kafka`: 실시간 뉴스 데이터 스트리밍 및 이벤트 처리 플랫폼
 
@@ -38,13 +38,13 @@
 
 <br>
 
-## ETL (Data Pipeline Flow)
+## 🔃 ETL (Data Pipeline Flow)
 
 <div>
     <img src="./assets/ETL.png" width="70%" height="70%">
 </div>
 
-**Extract** 
+** Extract** 
 - 웹 크롤링을 통해 다양한 뉴스 소스로부터 기사 데이터를 수집
 
     - `Selenium`: JavaScript 렌더링이 필요한 동적 웹 페이지에서 데이터를 추출, ex) 특정 카테고리별 인기 기사
@@ -85,7 +85,7 @@
 
 <br>
 
-## Lambda Architecture
+## ⚡️ Lambda Architecture
 
 
 *   **Speed Layer**
@@ -107,7 +107,7 @@
 
 <br>
 
-## Project Structure
+## 📁 Project Structure
 
 ```
 news-pipeline/
@@ -134,7 +134,40 @@ news-pipeline/
 
 <br>
 
-### Future Enhancements
+## 💻 How to Run
+
+Docker Network 생성
+```text
+docker network create news-pipeline 
+```
+
+Kafka 실행
+```text
+docker compose -f infra/kafka/docker-compose-kafka.yml up -d  
+```
+
+Docker Image Build
+```text
+docker compose -f docker-compose.yml build 
+```
+
+Airflow 실행
+```text
+docker compose -f docker-compose.yml up -d 
+```
+
+`Kafka UI` : localhost:8080
+
+`Airflow UI` : localhost:8081
+
+** airflow/models/variables.json 작성 필요
+
+
+
+
+<br>
+
+### 🧭 Future Enhancements
 
 *   **클라우드 네이티브 아키텍처 전환**
   
