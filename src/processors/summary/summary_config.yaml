@@ -1,0 +1,54 @@
+# 전역 설정
+run_mode: "stream"  # 'stream' 또는 'batch'
+log_level: "INFO"   # DEBUG, INFO, WARNING, ERROR, CRITICAL
+# model_path: null # 로컬 모델 경로 (지정하지 않으면 TextSummarizer의 기본 모델 사용)
+# model_path: "/path/to/your/local_model_directory" # 예시
+
+# 요약 파라미터 (TextSummarizer 및 SummaryProcessor에 적용)
+summary_parameters:
+  # TextSummarizer 기본 모델 (model_path가 None일 경우 사용)
+  default_model_name: "eenzeenee/t5-base-korean-summarization"
+  input_max_length: 1024
+  summary_min_length: 30
+  summary_max_length: 150 # processor.py에서 사용하던 값
+  num_beams: 4
+  do_sample: false # processor.py에서 사용하던 값 (TextSummarizer 기본은 True)
+  min_text_length_for_summary_override: 100  # 요약할 최소 텍스트 길이
+  
+
+# Kafka 기본 설정 (Docker 환경에 맞게 수정)
+kafka_settings:
+  bootstrap_servers: "kafka:29092"  # Docker 네트워크 내 kafka 호스트
+  topic_prefix: "news"
+  # 실제 뉴스 파이프라인의 카테고리에 맞게 수정
+  available_categories:
+    economy: "경제"
+    society: "사회"
+    politics: "정치"
+    world: "국제"
+    culture: "문화"
+    it: "IT"
+    business: "기업"
+    
+
+# Kafka 스트리밍 관련 설정
+kafka_stream_settings:
+  # categories: null # 전체 카테고리 처리
+  group_id: "summary-processor-group"
+  idle_timeout_sec: 30  # 30초 동안 메시지 없으면 종료 (Airflow에 맞게)
+  gpu_batch_size: 4     # GPU 메모리 절약
+  gpu_batch_timeout_sec: 3
+  consumer_request_timeout_ms: 15000
+
+# Kafka 배치 처리 관련 설정
+kafka_batch_settings:
+  # category: null # 전체 카테고리 처리
+  read_timeout_ms: 10000
+  consumer_request_timeout_ms: 15000
+  batch_processing_size: 50  # 배치 크기 축소
+
+# Kafka Producer 설정 (타임아웃 단축)
+kafka_producer_override:
+  request_timeout_ms: 15000   # 15초로 단축
+  max_block_ms: 15000        # 15초로 단축
+  retries: 3                 # 재시도 횟수 축소

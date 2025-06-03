@@ -6,9 +6,9 @@ FROM nvidia/cuda:12.1.0-cudnn8-devel-ubuntu22.04 AS builder
 # Python 설치 (CUDA 이미지에는 Python이 기본 포함되지 않음)
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-    python3.12 \
-    python3.12-dev \
-    python3.12-venv \
+    python3.11 \
+    python3.11-dev \
+    python3.11-venv \
     python3-pip \
     build-essential \
     gcc \
@@ -17,7 +17,7 @@ RUN apt-get update && \
     && rm -rf /var/lib/apt/lists/*
 
 # 가상환경 생성
-RUN python3.12 -m venv /opt/venv
+RUN python3.11 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
 # 필수 파이썬 라이브러리 설치 (GPU 버전)
@@ -48,8 +48,8 @@ FROM nvidia/cuda:12.1.0-cudnn8-runtime-ubuntu22.04
 # Python 설치
 RUN apt-get update && \
     apt-get install -y --no-install-recommends \
-    python3.12 \
-    python3.12-venv \
+    python3.11 \
+    python3.11-venv \
     python3-pip \
     curl \
     && apt-get clean \

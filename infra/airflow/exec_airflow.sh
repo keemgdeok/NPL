@@ -10,6 +10,7 @@ NC='\033[0m' # No Color
 echo -e "${GREEN}데이터 파이프라인 Airflow 설치 및 실행 스크립트${NC}"
 echo "===================================="
 
+
 # 필요한 디렉토리 확인 및 생성
 echo -e "${YELLOW}필요한 디렉토리 확인 중...${NC}"
 
@@ -25,6 +26,7 @@ done
 
 # DAG 파일 복사 (이미 존재하는 경우 스킵) (경로 수정)
 echo -e "${YELLOW}DAG 파일 복사 중...${NC}"
+
 if [[ -f ./news_pipeline_dag.py ]]; then
   if [[ -f ./dags/news_pipeline_dag.py ]]; then
     echo "news_pipeline_dag.py 파일이 이미 ./dags/에 존재합니다. 복사하지 않습니다."
@@ -60,9 +62,9 @@ if ! docker network ls | grep -q npl-network; then
   docker network create npl-network
 else
   echo -e "${YELLOW}Docker 네트워크 'npl-network'가 이미 존재합니다.${NC}"
-  # 기존 컨테이너 중지
-  echo -e "${YELLOW}기존 Airflow 컨테이너 정리 중...${NC}"
-  docker compose -f docker-compose-airflow.yml down --volumes --remove-orphans
+  # 기존 컨테이너 중지 (데이터 볼륨 보존을 위해 --volumes 옵션 제거)
+  echo -e "${YELLOW}기존 Airflow 컨테이너 정리 중 (데이터 볼륨은 유지됩니다)...${NC}"
+  docker compose -f docker-compose-airflow.yml down --remove-orphans
 fi
 
 # Docker 이미지 미리 가져오기

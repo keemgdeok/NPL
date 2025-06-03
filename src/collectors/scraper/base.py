@@ -38,7 +38,12 @@ class BaseScraper(ABC):
         # Kafka 프로듀서 설정
         self.producer = KafkaProducer(
             bootstrap_servers=kafka_bootstrap_servers,
-            value_serializer=lambda x: json.dumps(x, default=str).encode('utf-8')
+            value_serializer=lambda x: json.dumps(x, default=str).encode('utf-8'),
+            api_version=(0, 10, 2),  # 명시적 API 버전 설정
+            request_timeout_ms=60000,  # 60초 타임아웃
+            max_block_ms=60000,  # 메타데이터 대기 시간
+            retries=5,  # 재시도 횟수
+            retry_backoff_ms=1000,  # 재시도 간격 (1초)
         )
         
         # 동시 요청 제한 (기본값: 5)
@@ -92,7 +97,9 @@ class BaseScraper(ABC):
     
     async def collect_all_categories(self):
         """모든 카테고리의 뉴스를 비동기로 수집"""
-        async with aiohttp.ClientSession(headers=self.headers) as session:
+        # HTTP 요청 타임아웃 설정 (10초)
+        timeout = aiohttp.ClientTimeout(total=10)
+        async with aiohttp.ClientSession(headers=self.headers, timeout=timeout) as session:
             # 카테고리별 수집 태스크 생성
             tasks = []
             for category in self.categories.keys():

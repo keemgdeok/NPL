@@ -63,13 +63,15 @@ def main():
         logger.info(f"카테고리 목록: {', '.join([f'{k}({v})' for k, v in Config.CATEGORIES.items()])}")
         
         # 프로세서 초기화 - 여기서 모든 리소스(Kafka, MongoDB)가 설정됨
-        processor = SentimentProcessor(model_path=args.model_path)
+        processor = SentimentProcessor(model_path=args.model_path, idle_timeout=args.idle_timeout)
         
         # 처리 모드에 따라 실행
         if args.mode == 'stream':
             logger.info("스트림 처리 모드 시작...")
-            if args.idle_timeout:
+            if args.idle_timeout and args.idle_timeout > 0: # 0보다 클 때만 유효한 타임아웃으로 간주
                 logger.info(f"자동 종료 설정: {args.idle_timeout}초 동안 메시지 없으면 종료")
+            else:
+                logger.info("자동 종료 설정: 없음 (메시지 무한 대기)")
             logger.info(f"다음 토픽들을 구독합니다: {', '.join([f'{Config.KAFKA_TOPIC_PREFIX}.{c}.processed' for c in Config.CATEGORIES])}")
             processor.process_stream()
         else:
