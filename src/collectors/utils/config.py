@@ -11,6 +11,9 @@ load_dotenv()
 class Config:
     """애플리케이션 전체 설정"""
     
+    # 로깅 레벨 설정 (환경 변수 LOG_LEVEL 사용, 없으면 "INFO")
+    LOG_LEVEL = os.getenv("LOG_LEVEL", "INFO").upper()
+    
     # Kafka 설정
     KAFKA_BOOTSTRAP_SERVERS = os.getenv("KAFKA_BOOTSTRAP_SERVERS", "localhost:9092")
     KAFKA_TOPIC_PREFIX = os.getenv("KAFKA_TOPIC_PREFIX", "news")
@@ -28,7 +31,7 @@ class Config:
     def validate(cls):
         """필수 환경 변수 검증"""
         required_vars = [
-            "MONGODB_URI"
+            # "MONGODB_URI"
         ]
         
         # S3 기능을 사용하는 컴포넌트에서만 AWS 자격증명 검사

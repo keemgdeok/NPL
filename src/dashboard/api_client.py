@@ -25,7 +25,7 @@ class APIClient:
         if sentiment:
             params["sentiment"] = sentiment
             
-        response = requests.get(f"{self.base_url}/articles", params=params)
+        response = requests.get(f"{self.base_url}/articles/", params=params)
         response.raise_for_status()
         return response.json()
     
@@ -37,14 +37,14 @@ class APIClient:
     
     def get_categories(self) -> list:
         """카테고리 목록 조회"""
-        response = requests.get(f"{self.base_url}/categories")
+        response = requests.get(f"{self.base_url}/articles/categories")
         response.raise_for_status()
         return response.json()
     
     def get_category_summary(self, category: str, days: int = 7) -> Dict[str, Any]:
         """카테고리별 통계 요약"""
         response = requests.get(
-            f"{self.base_url}/categories/{category}/summary",
+            f"{self.base_url}/analytics/categories/{category}/summary",
             params={"days": days}
         )
         response.raise_for_status()
@@ -53,7 +53,7 @@ class APIClient:
     def get_stats_summary(self, days: int = 7) -> Dict[str, Any]:
         """전체 통계 요약"""
         response = requests.get(
-            f"{self.base_url}/stats/summary",
+            f"{self.base_url}/analytics/stats/summary",
             params={"days": days}
         )
         response.raise_for_status()
