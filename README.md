@@ -60,7 +60,6 @@
     
     - `Mecab`: 한국어 형태소 분석기, 문장에서 명사를 추출하여 주요 키워드를 식별하고, 검색 용이성 높임
         
-
 **Load**
 - 변환된 데이터를 분석, 검색, 활용이 용이하도록 데이터베이스에 저장
 
@@ -175,11 +174,11 @@ docker compose -f docker-compose.yml up -d
       
 *   **데이터 플랫폼 고도화**
   
-    * `Elasticsearch` 클러스터 최적화, `Kibana` 활용 심화, `데이터 품질 관리` 시스템 도입
+    * `Elasticsearch` 클러스터 최적화, `Kibana` 활용, `데이터 품질 관리` 시스템 도입
       
 *   **DevOps 및 MLOps 강화**
 
-    * `CI/CD 파이프라인` 구축, `IaC(Infrastructure as Code)` 확대, 통합 `모니터링 및 로깅 시스템` (`Prometheus`, `Grafana`, `ELK/EFK`) 구축
+    * `CI/CD 파이프라인` 구축, 통합 `모니터링 및 로깅 시스템` (`Prometheus`, `Grafana`, `ELK/EFK`) 구축
       
 *   **서비스 안정성 및 보안 강화**
     * API 보안 강화, 데이터 암호화, 파이프라인 오류 처리 개선 및 정기적인 시스템 점검
