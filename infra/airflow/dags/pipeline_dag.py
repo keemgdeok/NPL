@@ -6,7 +6,7 @@ from airflow.operators.python import PythonOperator
 from airflow.operators.dummy import DummyOperator
 from airflow.operators.bash import BashOperator
 from airflow.models import Variable
-from docker.types import Mount
+from docker.types import Mount, DeviceRequest
 
 # 기본 인자 정의
 default_args = {
@@ -65,6 +65,7 @@ def create_docker_operator(
     command: str,
     environment: Dict[str, str],
     mounts: Optional[List[Mount]] = None,
+    device_requests: Optional[List[DeviceRequest]] = None,
     docker_url: str = 'unix://var/run/docker.sock',
     network_mode: str = 'news-pipeline',  # 명시적으로 news-pipeline 네트워크 사용
     auto_remove: str = 'success',
@@ -84,6 +85,7 @@ def create_docker_operator(
         command=command,
         environment=environment,
         mounts=mounts or [],
+        device_requests=device_requests or [],
         docker_url=docker_url,
         network_mode=network_mode,
         auto_remove=auto_remove,
@@ -171,13 +173,20 @@ with DAG(
     process_sentiment = create_docker_operator(
         task_id='process_sentiment',
         image='news-pipeline-sentiment-processor:latest',
-        command='python -m src.processors.sentiment.run_processor',  # 모든 옵션 제거
+        command='python -m src.processors.sentiment.run_processor --idle-timeout 60',  # 60초 유휴 시간 후 자동 종료
         environment={
             'KAFKA_BOOTSTRAP_SERVERS': KAFKA_BOOTSTRAP_SERVERS,
             'MONGODB_URI': MONGODB_URI,
             'DATABASE_NAME': DATABASE_NAME,
+            'NVIDIA_VISIBLE_DEVICES': 'all', # 컨테이너 내에서 GPU 인식 보장
+            'NVIDIA_DRIVER_CAPABILITIES': 'compute,utility' # 필요한 드라이버 기능 명시
         },
         dag=dag,
+        device_requests=[
+            DeviceRequest(count=-1, capabilities=[['gpu']])
+        ],
+        network_mode='news-pipeline',
+        trigger_rule='all_done'
     )
     
     # 요약 처리 작업
@@ -189,8 +198,14 @@ with DAG(
             'KAFKA_BOOTSTRAP_SERVERS': KAFKA_BOOTSTRAP_SERVERS,
             'MONGODB_URI': MONGODB_URI,
             'DATABASE_NAME': DATABASE_NAME,
+            'NVIDIA_VISIBLE_DEVICES': 'all', # 컨테이너 내에서 GPU 인식 보장
+            'NVIDIA_DRIVER_CAPABILITIES': 'compute,utility' # 필요한 드라이버 기능 명시
         },
         dag=dag,
+        device_requests=[
+            DeviceRequest(count=-1, capabilities=[['gpu']])
+        ],
+        network_mode='news-pipeline',  # Kafka와 동일한 네트워크 사용
         trigger_rule='all_done',  # 이전 작업들 중 일부가 실패해도 실행
     )
     
