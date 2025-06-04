@@ -44,7 +44,7 @@
     <img src="./assets/ETL.png" width="70%" height="70%">
 </div>
 
-** Extract** 
+**Extract** 
 - 웹 크롤링을 통해 다양한 뉴스 소스로부터 기사 데이터를 수집
 
     - `Selenium`: JavaScript 렌더링이 필요한 동적 웹 페이지에서 데이터를 추출, ex) 특정 카테고리별 인기 기사
@@ -170,7 +170,7 @@ docker compose -f docker-compose.yml up -d
 
 *   **클라우드 네이티브 아키텍처 전환**
   
-    *  `AWS` 서비스(`Lambda`, `VPC`) 및 `Kubernetes(k8s)`를 활용하여 확장성, 탄력성, 관리 효율성을 갖춘 클라우드 네이티브 환경으로 점진적 전환
+    *  `AWS` 서비스(`Lambda`, `VPC`) 및 `Kubernetes(k8s)`를 활용하여 클라우드 네이티브 환경으로 점진적 전환
       
 *   **데이터 플랫폼 고도화**
   
