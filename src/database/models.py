@@ -39,7 +39,6 @@ class NewsArticleModel(BaseModel):
 class ProcessedArticleModel(NewsArticleModel):
     """텍스트 처리된 뉴스 기사 모델"""
     
-    processed_content: str
     processed_at: datetime = Field(default_factory=datetime.now)
 
 

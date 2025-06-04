@@ -10,8 +10,8 @@ CONFIG_DIR=${CONFIG_DIR:-/config}
 TOPICS_FILE=${TOPICS_FILE:-${CONFIG_DIR}/topics.yml}
 
 # 카프카가 이미 준비되었는지 확인합니다.
-echo "Checking if Kafka is ready..."
-kafka-broker-api-versions --bootstrap-server kafka:29092
+# echo "Checking if Kafka is ready..."
+# kafka-broker-api-versions --bootstrap-server kafka:29092
 
 # YQ가 설치되어 있지 않아서 파이썬 스크립트로 YAML 파일을 파싱합니다.
 if [ ! -f "$TOPICS_FILE" ]; then

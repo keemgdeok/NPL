@@ -3,12 +3,8 @@ from .processor import TextProcessor
 
 def main():
     parser = argparse.ArgumentParser(description='네이버 뉴스 텍스트 처리기')
-    parser.add_argument('--mode', choices=['stream', 'batch'], default='stream',
-                      help='처리 모드 선택 (stream: 실시간, batch: 배치)')
-    parser.add_argument('--category', type=str,
-                      help='처리할 카테고리 (배치 모드에서만 사용)')
-    parser.add_argument('--days', type=int, default=1,
-                      help='처리할 기간 (일 단위, 배치 모드에서만 사용)')
+    parser.add_argument('--mode', choices=['stream'], default='stream',
+                      help='처리 모드 선택 (stream: 실시간)')
     parser.add_argument('--run-once', action='store_true',
                       help='한 번만 메시지를 처리하고 종료 (스트림 모드에서만 적용)')
     
@@ -19,13 +15,10 @@ def main():
     try:
         if args.mode == 'stream':
             print("Starting stream processing...")
-            if args.run_once:  # 이 부분 추가 필요
+            if args.run_once:
                 processor.process_stream_once()
             else:
                 processor.process_stream()
-        else:
-            print(f"Starting batch processing for the last {args.days} days...")
-            processor.process_batch(args.category, args.days)
             
     except KeyboardInterrupt:
         print("\nProcessing interrupted by user")

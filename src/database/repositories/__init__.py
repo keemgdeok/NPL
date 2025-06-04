@@ -3,6 +3,7 @@
 """
 
 from .article_repository import (
+    ArticleRepository,
     RawArticleRepository,
     ProcessedArticleRepository,
     SentimentArticleRepository,
@@ -10,6 +11,7 @@ from .article_repository import (
 )
 
 __all__ = [
+    "ArticleRepository",
     "RawArticleRepository",
     "ProcessedArticleRepository",
     "SentimentArticleRepository",

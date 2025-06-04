@@ -32,15 +32,17 @@ x-airflow-common:
     AIRFLOW__LOGGING__BASE_LOG_FOLDER: '/opt/airflow/logs'
     AIRFLOW__LOGGING__DAG_PROCESSOR_MANAGER_LOG_LOCATION: '/opt/airflow/logs/dag_processor_manager/dag_processor_manager.log'
   volumes:
-    - ./dags:/opt/airflow/dags:ro
+    - ./dags:/opt/airflow/dags
     - ./logs:/opt/airflow/logs
     - ./plugins:/opt/airflow/plugins
     - ./config:/opt/airflow/config
-    - ./models:/opt/airflow/dags/project/models:ro
+    - ./models:/opt/airflow/models_storage
     - /var/run/docker.sock:/var/run/docker.sock
-  user: "${AIRFLOW_UID:-50000}:0"
+  user: "50000:0"
   group_add:
-    - 999
+    - "984"
+  networks:
+    - news-pipeline
   depends_on:
     &airflow-common-depends-on
     postgres:
@@ -78,7 +80,7 @@ services:
       start_period: 5s
     restart: unless-stopped
     networks:
-      - npl-network
+      - news-pipeline
     deploy:
       resources:
         limits:
@@ -102,10 +104,8 @@ services:
       start_period: 30s
     restart: unless-stopped
     networks:
-      - npl-network
-    user: "${AIRFLOW_UID:-50000}:0"
-    group_add:
-    - 999
+      - news-pipeline
+    user: "50000:0"
     depends_on:
       <<: *airflow-common-depends-on
       airflow-init:
@@ -129,9 +129,7 @@ services:
       start_period: 30s
     restart: unless-stopped
     networks:
-      - npl-network
-    group_add:
-      - 999
+      - news-pipeline
     depends_on:
       <<: *airflow-common-depends-on
       airflow-init:
@@ -146,23 +144,27 @@ services:
     <<: *airflow-common
     container_name: npl-airflow-init
     entrypoint: /bin/bash
-    user: "50000:0"
+    restart: "no"
+    healthcheck:
+      disable: true
     command:
       - -c
       - |
         mkdir -p /opt/airflow/dags /opt/airflow/logs /opt/airflow/plugins /opt/airflow/config
         chmod -R g+w /opt/airflow/logs /opt/airflow/plugins
-        chmod -R g+r /opt/airflow/dags
         airflow db init && \
         airflow users create \
           --username ${AIRFLOW_ADMIN_USER:-airflow} \
+          --password ${AIRFLOW_ADMIN_PASSWORD:-airflow} \
           --firstname Admin \
           --lastname User \
           --role Admin \
-          --email ${AIRFLOW_ADMIN_EMAIL:-keemgdeok@gmail.com} \
-          --password ${AIRFLOW_ADMIN_PASSWORD:-airflow}
+          --email ${AIRFLOW_ADMIN_EMAIL:-keemgdeok@gmail.com}
+          
+        echo "Airflow initialization script completed."
+        exit 0 # 명시적으로 성공 종료 코드 반환
     networks:
-      - npl-network
+      - news-pipeline
     environment:
       <<: *airflow-common-env
       _AIRFLOW_DB_UPGRADE: 'true'
@@ -176,9 +178,9 @@ services:
           memory: 512M
 
 networks:
-  npl-network:
+  news-pipeline:
     external: true
-    name: ${DOCKER_NETWORK_NAME:-npl-network}
+    name: news-pipeline
 
 volumes:
   postgres-db-volume: 

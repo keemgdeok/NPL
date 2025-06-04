@@ -20,25 +20,25 @@ RUN apt-get update && \
 RUN python3.11 -m venv /opt/venv
 ENV PATH="/opt/venv/bin:$PATH"
 
-# 필수 파이썬 라이브러리 설치 (GPU 버전)
+# 필수 파이썬 라이브러리 설치 (GPU 버전 + PyYAML 추가)
 RUN pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir \
     torch>=2.0.1 \
     transformers>=4.34.0 \
     kafka-python>=2.0.2 \
     python-dotenv>=1.0.0 \
-    pymongo>=4.5.0 \
+    PyYAML>=6.0 \
     numpy>=1.24.4 \
-    tqdm>=4.66.1
+    tqdm>=4.66.1 \
+    nltk>=3.8.1
 
 # 소스 코드 복사
 COPY src/ /app/src/
 
-# 모델 다운로드 및 저장
+# NLTK punkt 다운로드 (setup.py 실행)
 WORKDIR /app
 ENV PYTHONPATH=/app
-RUN mkdir -p /app/models/kobart-summarization-model && \
-    python -m src.processors.summary.setup --output-dir=/app/models/kobart-summarization-model
+RUN python -m src.processors.summary.setup
 
 # ================================
 # 2단계: 실행 스테이지
@@ -64,9 +64,6 @@ ENV PATH="/opt/venv/bin:$PATH"
 # 소스 코드 복사
 COPY src/ /app/src/
 
-# 빌드 단계에서 다운로드한 모델 복사
-COPY --from=builder /app/models /app/models
-
 # 환경 변수 설정
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
@@ -78,5 +75,5 @@ ENV COMPONENT_NAME="summary-processor"
 HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
   CMD curl -f http://localhost:8000/health || exit 1
 
-# 모델 경로를 명시적으로 지정하여 실행
-CMD ["python3", "-m", "src.processors.summary.run_processor", "--model-path=/app/models/kobart-summarization-model"] 
+# 설정 파일 기반으로 실행 (기본 설정 파일 사용)
+CMD ["python3", "-m", "src.processors.summary.run_processor"] 
